@@ -62,6 +62,13 @@ const SHOTS: Shot[] = [
 const v = (a: V3) => new THREE.Vector3(a[0], a[1], a[2]);
 const curve = (pts: V3[]) => new THREE.CatmullRomCurve3(pts.map(v), false, "centripetal");
 
+/** Give the browser a chance to handle input / paint between heavy steps. */
+export function yieldToMain(): Promise<void> {
+  const sched = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  if (sched?.yield) return sched.yield();
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 /* ---------------- GPU bake ---------------- */
 function bake(
   renderer: THREE.WebGLRenderer,
@@ -257,35 +264,75 @@ export class OrbitWorld {
   private readonly trail = new THREE.Vector3();
   private readonly trailTarget = new THREE.Vector3();
 
-  constructor(
+  /**
+   * Builds the world in slices so no single task blocks the main thread for long:
+   * each GPU bake (a shader compile + a full-screen draw) gets its own task.
+   * Returns null when `alive()` turns false part-way (the canvas unmounted).
+   */
+  static async create(
     renderer: THREE.WebGLRenderer,
+    q: QualitySettings,
+    reduced: boolean,
+    alive: () => boolean,
+  ): Promise<OrbitWorld | null> {
+    const made: THREE.WebGLRenderTarget[] = [];
+    const step = async <T extends THREE.WebGLRenderTarget>(make: () => T): Promise<T | null> => {
+      await yieldToMain();
+      if (!alive()) return null;
+      const rt = make();
+      made.push(rt);
+      return rt;
+    };
+    const abort = () => {
+      made.forEach((rt) => rt.dispose());
+      return null;
+    };
+
+    /* ---- bake the planets and the sky ---- */
+    const earthSurface = await step(() => bake(renderer, q.bake, earthSurfaceFrag));
+    if (!earthSurface) return abort();
+    const earthData = await step(() => bake(renderer, q.bake, earthDataFrag));
+    if (!earthData) return abort();
+    const marsMap = await step(() =>
+      bake(renderer, q.marsBake, rockyBakeFrag, {
+        uDark: { value: new THREE.Color(0.15, 0.05, 0.022) },
+        uBase: { value: new THREE.Color(0.48, 0.15, 0.05) },
+        uBright: { value: new THREE.Color(0.68, 0.33, 0.16) },
+        uCap: { value: 1 },
+        uCanyon: { value: 1 },
+        uCraters: { value: 0.7 },
+        uMaria: { value: 0.85 },
+        uSeed: { value: 4.2 },
+      }),
+    );
+    if (!marsMap) return abort();
+    const moonMap = await step(() =>
+      bake(renderer, 512, rockyBakeFrag, {
+        uDark: { value: new THREE.Color(0.07, 0.07, 0.075) },
+        uBase: { value: new THREE.Color(0.26, 0.25, 0.24) },
+        uBright: { value: new THREE.Color(0.42, 0.41, 0.4) },
+        uCap: { value: 0 },
+        uCanyon: { value: 0 },
+        uCraters: { value: 1.4 },
+        uMaria: { value: 1 },
+        uSeed: { value: 11.7 },
+      }),
+    );
+    if (!moonMap) return abort();
+    const skyMap = await step(() => bake(renderer, 1024, skyBakeFrag, { uBand: { value: BAND } }, false));
+    if (!skyMap) return abort();
+
+    await yieldToMain();
+    if (!alive()) return abort();
+    return new OrbitWorld({ earthSurface, earthData, marsMap, moonMap, skyMap }, q, reduced);
+  }
+
+  private constructor(
+    maps: Record<"earthSurface" | "earthData" | "marsMap" | "moonMap" | "skyMap", THREE.WebGLRenderTarget>,
     private q: QualitySettings,
     private reduced: boolean,
   ) {
-    /* ---- bake the planets and the sky ---- */
-    const earthSurface = bake(renderer, q.bake, earthSurfaceFrag);
-    const earthData = bake(renderer, q.bake, earthDataFrag);
-    const marsMap = bake(renderer, q.marsBake, rockyBakeFrag, {
-      uDark: { value: new THREE.Color(0.15, 0.05, 0.022) },
-      uBase: { value: new THREE.Color(0.48, 0.15, 0.05) },
-      uBright: { value: new THREE.Color(0.68, 0.33, 0.16) },
-      uCap: { value: 1 },
-      uCanyon: { value: 1 },
-      uCraters: { value: 0.7 },
-      uMaria: { value: 0.85 },
-      uSeed: { value: 4.2 },
-    });
-    const moonMap = bake(renderer, 512, rockyBakeFrag, {
-      uDark: { value: new THREE.Color(0.07, 0.07, 0.075) },
-      uBase: { value: new THREE.Color(0.26, 0.25, 0.24) },
-      uBright: { value: new THREE.Color(0.42, 0.41, 0.4) },
-      uCap: { value: 0 },
-      uCanyon: { value: 0 },
-      uCraters: { value: 1.4 },
-      uMaria: { value: 1 },
-      uSeed: { value: 11.7 },
-    });
-    const skyMap = bake(renderer, 1024, skyBakeFrag, { uBand: { value: BAND } }, false);
+    const { earthSurface, earthData, marsMap, moonMap, skyMap } = maps;
     this.renderTargets.push(earthSurface, earthData, marsMap, moonMap, skyMap);
 
     /* ---- Earth: tilted axis, spinning surface, clouds drift in the shader ---- */

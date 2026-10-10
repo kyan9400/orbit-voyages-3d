@@ -52,7 +52,9 @@ Footer: contact, motion toggle, copyright, disclaimer.
 | Stars | 7000 | 4000 | 2000 |
 | Flight streaks | 1400 | 800 | 350 |
 | Ambient loop | 30 fps | 30 fps | 30 fps |
-Detection: WebGL2 probe + GPU name (`WEBGL_debug_renderer_info`); software renderers → low; Intel/AMD integrated,
+Detection: WebGL2 probe + GPU name (`WEBGL_debug_renderer_info`); software renderers (SwiftShader, llvmpipe, softpipe,
+Microsoft Basic Render, or a context that fails `failIfMajorPerformanceCaveat`) → no 3D at all, the poster stays
+(`?quality=` still forces the 3D on); Intel/AMD integrated,
 Mali, Adreno, PowerVR, touch devices → at most medium; ≤2 cores or ≤2 GB → low. `?quality=low|medium|high` overrides.
 drei `PerformanceMonitor` steps the DPR down on decline.
 
@@ -148,7 +150,9 @@ Telegram, WhatsApp, GitHub, portfolio · motion toggle · "© 2026 Alhassan Alfa
 
 ## Performance budget
 - First-load JS for `/` < 250 KB gzip excluding the lazy 3D chunk (no GSAP/Lenis: native scroll + one damping layer).
-- 3D chunk loaded after hydration with `next/dynamic({ ssr:false })`; HTML/LCP text renders immediately.
+- 3D chunk loaded with `next/dynamic({ ssr:false })` only after window `load` + `requestIdleCallback` (2.5 s timeout)
+  and the GPU probe; never during hydration. HTML/LCP text renders immediately. World built in slices (yield between
+  GPU bakes and before `compileAsync`).
 - GPU memory: ≤ 5 baked maps (≤ 2048×1024 RGBA8).
 - Draw calls ≈ 20; zero allocations in `useFrame`; no React state per frame.
 - Lighthouse mobile: Perf ≥ 85, A11y/BP/SEO ≥ 95. No backdrop-filter; panels are solid gradients.

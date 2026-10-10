@@ -217,7 +217,8 @@ main:focus {
 html[data-webgl="ready"] .backdrop__canvas {
   opacity: 1;
 }
-html[data-webgl="failed"] .backdrop__canvas {
+html[data-webgl="failed"] .backdrop__canvas,
+html[data-webgl="off"] .backdrop__canvas {
   display: none;
 }
 .backdrop__scrim {

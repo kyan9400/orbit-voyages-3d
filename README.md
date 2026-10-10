@@ -37,7 +37,9 @@ which keeps the first-load bundle small.
 - Quality tier chosen before the canvas exists (GPU name, cores, memory, touch; `?quality=low|medium|high`), sets
   DPR cap, antialiasing, bake size, star and streak counts. Frame-time watcher lowers the DPR on slow GPUs.
 - Shaders compiled with `compileAsync` behind a poster before the canvas fades in.
-- 3D chunk loaded with `next/dynamic({ ssr: false })` after the browser is idle. No `backdrop-filter` anywhere.
+- 3D chunk loaded with `next/dynamic({ ssr: false })` only after window `load` + an idle callback + a tiny GPU probe;
+  software renderers (SwiftShader, llvmpipe, …) never download it and keep the poster (`?quality=…` forces 3D on).
+  The world is built in slices that yield to the main thread. No `backdrop-filter` anywhere.
 - `prefers-reduced-motion` respected by default (camera cuts between shots, no ambient motion) with a
   "Turn on full motion" toggle (`?motion=full` also works). Without WebGL a code-made SVG poster stays in place.
 

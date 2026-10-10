@@ -1,19 +1,22 @@
 "use client";
 
 /*
-  The lazily loaded 3D chunk. Loaded with next/dynamic({ ssr: false }), after the
-  page is interactive, so the HTML and its text render instantly.
+  The lazily loaded 3D chunk. Loaded with next/dynamic({ ssr: false }) only after
+  window "load" + an idle callback + a GPU probe (see Backdrop), so the HTML and its
+  text render instantly and software renderers never download it. The world is
+  built in slices (yielding between GPU bakes) and compiled with compileAsync
+  behind the poster; the canvas fades in (opacity only) once it is warm.
 
   Frame loop: frameloop="demand". Scrolling invalidates; while the camera is still
   settling we render every display frame; when it rests, ambient effects (spin,
   clouds, ring) ask for ~30 fps; with reduced motion nothing renders until the next scroll.
 */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { detectQuality, type QualitySettings } from "@/lib/quality";
+import type { QualitySettings } from "@/lib/quality";
 import { flight } from "@/lib/flight";
-import { OrbitWorld } from "./world";
+import { OrbitWorld, yieldToMain } from "./world";
 
 function setWebglState(state: "ready" | "failed") {
   document.documentElement.dataset.webgl = state;
@@ -30,14 +33,23 @@ function Engine({ q, reduced }: { q: QualitySettings; reduced: boolean }) {
 
   useEffect(() => {
     let alive = true;
-    const world = new OrbitWorld(gl, q, reduced);
-    worldRef.current = world;
-    scene.add(world.root);
+    let world: OrbitWorld | null = null;
     flight.invalidate = () => invalidate();
 
-    // warm-up behind the curtain: compile every program before the canvas is shown
+    // build in slices, then warm up behind the poster: compile every program before the canvas is shown
     const warm = async () => {
+      world = await OrbitWorld.create(gl, q, reduced, () => alive);
+      if (!world) return;
+      if (!alive) {
+        world.dispose();
+        world = null;
+        return;
+      }
+      worldRef.current = world;
+      scene.add(world.root);
       world.update(camera as THREE.PerspectiveCamera, 0, gl.domElement.clientWidth, gl.domElement.clientHeight, gl.getPixelRatio());
+      await yieldToMain();
+      if (!alive) return;
       try {
         await gl.compileAsync(scene, camera);
       } catch {
@@ -59,8 +71,10 @@ function Engine({ q, reduced }: { q: QualitySettings; reduced: boolean }) {
       document.removeEventListener("visibilitychange", onVisible);
       window.clearTimeout(state.timer);
       flight.invalidate = null;
-      scene.remove(world.root);
-      world.dispose();
+      if (world) {
+        scene.remove(world.root);
+        world.dispose();
+      }
       worldRef.current = null;
     };
   }, [gl, scene, camera, invalidate, q, reduced]);
@@ -106,15 +120,8 @@ function Engine({ q, reduced }: { q: QualitySettings; reduced: boolean }) {
   return null;
 }
 
-export default function FlightCanvas({ reduced }: { reduced: boolean }) {
-  // decided once, before the Canvas exists
-  const [q] = useState(() => detectQuality());
-
-  useEffect(() => {
-    if (!q) setWebglState("failed");
-  }, [q]);
-
-  if (!q) return null;
+export default function FlightCanvas({ q, reduced }: { q: QualitySettings; reduced: boolean }) {
+  // q was decided by the GPU probe before this chunk was even requested
   const cap = Math.min(q.dprCap, typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1);
 
   return (
