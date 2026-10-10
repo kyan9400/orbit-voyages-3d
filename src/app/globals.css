@@ -310,6 +310,106 @@ html[data-webgl] .backdrop__status {
     display: block;
   }
 }
+.site-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* mobile menu: solid panel under the header (no backdrop-filter over the canvas) */
+.menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink);
+  background: rgb(4 5 10 / 0.7);
+  border: 1px solid rgb(238 241 248 / 0.3);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.menu-button__icon {
+  display: grid;
+  gap: 5px;
+  width: 16px;
+}
+.menu-button__icon span {
+  display: block;
+  height: 1.5px;
+  background: currentColor;
+}
+.menu-button__icon[data-open] span:first-child {
+  transform: translateY(3.25px) rotate(45deg);
+}
+.menu-button__icon[data-open] span:last-child {
+  transform: translateY(-3.25px) rotate(-45deg);
+}
+.mobile-menu {
+  position: fixed;
+  inset: 0;
+  z-index: -1; /* inside the header's stacking context: under the logo and button */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: calc(var(--space-9) - var(--space-2)) var(--gutter) var(--space-7);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--color-void);
+}
+.mobile-menu[hidden] {
+  display: none;
+}
+.mobile-menu ul {
+  display: grid;
+  border-top: 1px solid var(--color-line);
+}
+.mobile-menu li {
+  border-bottom: 1px solid var(--color-line);
+}
+.mobile-menu nav a {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 7vw, 2rem);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.mobile-menu nav a:hover {
+  color: var(--color-ember);
+}
+.mobile-menu__cta {
+  align-self: flex-start;
+}
+/* only with full motion on (the default follows the OS reduce-motion setting) */
+.mobile-menu[data-motion="full"] {
+  animation: menu-in 0.35s var(--ease);
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+@media (min-width: 60rem) {
+  .menu-button,
+  .mobile-menu {
+    display: none;
+  }
+}
+/* narrow phones: the CTA lives in the menu (and in the hero) */
+@media (max-width: 29.99rem) {
+  .site-header__cta {
+    display: none;
+  }
+}
+
 @media (max-width: 26rem) {
   .site-header {
     gap: var(--space-3);

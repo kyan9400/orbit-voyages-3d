@@ -1,10 +1,20 @@
 import Backdrop from "@/components/Backdrop";
 import FlightTracker from "@/components/FlightTracker";
+import MobileMenu from "@/components/MobileMenu";
 import MotionToggle from "@/components/MotionToggle";
 
 const EMAIL = "kyan775909@gmail.com";
 const seatMail = (fare: string) =>
   `mailto:${EMAIL}?subject=${encodeURIComponent(`Orbit Voyages — ${fare}`)}`;
+
+const SECTIONS = [
+  { href: "#route", label: "The route" },
+  { href: "#ship", label: "The ship" },
+  { href: "#aboard", label: "Aboard" },
+  { href: "#mars", label: "Mars" },
+  { href: "#book", label: "Fares" },
+];
+const HEADER_CTA = { href: "#book", label: "Book a seat" };
 
 const LEGS = [
   {
@@ -128,16 +138,19 @@ export default function Home() {
         </a>
         <nav aria-label="Primary" className="site-nav">
           <ul>
-            <li><a href="#route">The route</a></li>
-            <li><a href="#ship">The ship</a></li>
-            <li><a href="#aboard">Aboard</a></li>
-            <li><a href="#mars">Mars</a></li>
-            <li><a href="#book">Fares</a></li>
+            {SECTIONS.map((s) => (
+              <li key={s.href}>
+                <a href={s.href}>{s.label}</a>
+              </li>
+            ))}
           </ul>
         </nav>
-        <a className="btn btn--small" href="#book">
-          Book a seat
-        </a>
+        <div className="site-header__actions">
+          <a className="btn btn--small site-header__cta" href={HEADER_CTA.href}>
+            {HEADER_CTA.label}
+          </a>
+          <MobileMenu links={SECTIONS} cta={HEADER_CTA} />
+        </div>
       </header>
 
       <main id="main" tabIndex={-1}>

@@ -12,7 +12,7 @@ of copy is one leg of the trip.
 - Next.js 16 (App Router, TypeScript strict, `src/`), React 19
 - three.js 0.186 + @react-three/fiber 9 (render-on-demand canvas)
 - Tailwind CSS 4 (`@theme` design tokens) + hand-written CSS
-- Fonts via `next/font/google`; OG image via `next/og`; favicon `app/icon.svg`
+- Fonts via `next/font/google`; social image `app/opengraph-image.png` / `twitter-image.png` (a screenshot of the live site); favicon `app/icon.svg`
 
 Pinned versions follow the shared `STACK.md`. GSAP and Lenis are intentionally **not** installed: the page uses
 native scrolling and a single damping layer inside the 3D rig (PERF-RULES rule 5, "or skip Lenis entirely"),
@@ -53,8 +53,8 @@ npm run lint
 
 ## Project layout
 ```
-src/app/            layout, page, 404, globals.css, icon.svg, opengraph-image, robots, sitemap
-src/components/     Backdrop (poster + lazy canvas), FlightTracker (scroll → shot, HUD), MotionToggle
+src/app/            layout, page, 404, globals.css, icon.svg, opengraph/twitter image (PNG + alt), robots, sitemap
+src/components/     Backdrop (poster + lazy canvas), FlightTracker (scroll → shot, HUD), MobileMenu, MotionToggle
 src/three/          FlightCanvas (R3F wrapper), world.ts (scene + camera rig), shaders.ts (GLSL)
 src/lib/            flight store, quality tiers, motion preference
 public/poster.svg   no-WebGL / pre-load poster
