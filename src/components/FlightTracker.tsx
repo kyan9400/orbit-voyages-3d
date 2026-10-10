@@ -25,11 +25,17 @@ export default function FlightTracker() {
   const legRef = useRef<HTMLSpanElement>(null);
   const barRef = useRef<HTMLSpanElement>(null);
   const railRef = useRef<HTMLElement>(null);
+  const hudRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     let anchors: number[] = [];
     let raf = 0;
     let lastActive = -1;
+    // The HUD steps aside whenever it would sit on top of page content.
+    let obstacles: HTMLElement[] = [];
+    let hudBox = { top: 0, right: 0, bottom: 0, left: 0 };
+    let hudAway = false;
+    const PAD = 12;
 
     const measure = () => {
       const vh = window.innerHeight;
@@ -41,6 +47,18 @@ export default function FlightTracker() {
         list.push(Math.max(list[i - 1] + 1, Math.min(max, top)));
       }
       anchors = list;
+
+      const hud = hudRef.current;
+      if (hud) {
+        const r = hud.getBoundingClientRect(); // position: fixed, so this only changes on resize
+        hudBox = { top: r.top - PAD, right: r.right + PAD, bottom: r.bottom + PAD, left: r.left - PAD };
+      }
+      const wide = window.matchMedia("(min-width: 48rem)").matches;
+      obstacles = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          wide ? ".facts, .hero__ctas, .panel, .fares, .fine, .footer__grid" : ".facts, .hero__ctas",
+        ),
+      );
     };
 
     const apply = () => {
@@ -56,6 +74,25 @@ export default function FlightTracker() {
       }
       flight.target = p;
       flight.invalidate?.();
+
+      const hud = hudRef.current;
+      if (hud) {
+        let hit = false;
+        for (const el of obstacles) {
+          const b = el.getBoundingClientRect();
+          if (b.bottom > hudBox.top && b.top < hudBox.bottom && b.right > hudBox.left && b.left < hudBox.right) {
+            hit = true;
+            break;
+          }
+        }
+        // never pull it away from under a keyboard user
+        if (hit && hud.contains(document.activeElement)) hit = false;
+        if (hit !== hudAway) {
+          hudAway = hit;
+          if (hit) hud.setAttribute("data-away", "");
+          else hud.removeAttribute("data-away");
+        }
+      }
 
       const t = telemetry(p);
       if (dayRef.current) dayRef.current.textContent = String(Math.round(t.day)).padStart(3, "0");
@@ -112,7 +149,7 @@ export default function FlightTracker() {
 
   return (
     <>
-      <aside className="hud" aria-label="Flight telemetry">
+      <aside className="hud" aria-label="Flight telemetry" ref={hudRef}>
         <p className="hud__row">
           <span className="hud__label">T+</span> <span ref={dayRef}>000</span> d
           <span className="hud__dist">

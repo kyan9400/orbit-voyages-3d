@@ -643,9 +643,10 @@ html[data-webgl] .backdrop__status {
 }
 
 /* ---------------- HUD + rail ---------------- */
+/* bottom-right, clear of the left-aligned copy; it fades out whenever it would cover content */
 .hud {
   position: fixed;
-  left: var(--gutter);
+  right: var(--gutter);
   bottom: var(--space-4);
   z-index: 40;
   display: grid;
@@ -657,6 +658,17 @@ html[data-webgl] .backdrop__status {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   min-width: 15rem;
+  transition:
+    opacity 0.3s var(--ease),
+    visibility 0s linear 0s;
+}
+.hud[data-away] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.3s var(--ease),
+    visibility 0s linear 0.3s;
 }
 .hud p {
   color: var(--color-ink);
