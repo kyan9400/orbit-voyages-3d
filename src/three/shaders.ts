@@ -255,43 +255,61 @@ uniform sampler2D uSurface;
 uniform sampler2D uData;
 uniform vec3 uSun;
 uniform float uCloud;
+uniform float uLights; // intro: 0 = city lights off, 1 = all on
+uniform vec2 uTexel;
+uniform float uBump;
 varying vec2 vUv;
 varying vec3 vN;
 varying vec3 vT;
 varying vec3 vB;
 varying vec3 vP;
 void main() {
-  vec3 N = normalize(vN);
+  vec3 Ng = normalize(vN);
   vec3 V = normalize(cameraPosition - vP);
   vec3 L = uSun;
   vec4 s = texture2D(uSurface, vUv);
   vec3 albedo = s.rgb * s.rgb;
   float ocean = s.a;
-  float lightsMap = texture2D(uData, vUv).g;
+  vec4 data = texture2D(uData, vUv);
+  float lightsMap = data.g;
   float c = texture2D(uData, vUv + vec2(uCloud, 0.0)).r;
   float shadow = texture2D(uData, vUv + vec2(uCloud - 0.003, 0.002)).r;
 
-  float ndl = dot(N, L);
-  float lit = max(ndl, 0.0);
+  // relief: land height (ocean is 0) tilts the normal, shading mountains near the terminator
+  vec3 N = Ng;
+  #ifdef RELIEF
+  float hu = texture2D(uData, vUv + vec2(uTexel.x, 0.0)).b;
+  float hv = texture2D(uData, vUv + vec2(0.0, uTexel.y)).b;
+  N = normalize(Ng - uBump * ((hu - data.b) * normalize(vT) + (hv - data.b) * normalize(vB)));
+  #endif
+
+  float ndl = dot(Ng, L);
+  float lit = max(dot(N, L), 0.0) * smoothstep(-0.05, 0.08, ndl);
+  float litG = max(ndl, 0.0);
   float day = smoothstep(-0.12, 0.22, ndl);
   float term = exp(-pow(ndl * 4.5, 2.0));
   vec3 sunCol = vec3(1.0, 0.96, 0.9);
 
   vec3 col = albedo * lit * 2.6 * sunCol * (1.0 - shadow * 0.45);
 
+  // ocean glint, broken up by a coarse "wind" read from a low mip of the cloud field
+  float wind = texture2D(uData, vec2(vUv.x * 3.0 + 0.37, vUv.y), 3.0).r;
   vec3 H = normalize(L + V);
-  float nh = max(dot(N, H), 0.0);
-  col += (pow(nh, 110.0) * 2.4 + pow(nh, 14.0) * 0.10) * ocean * lit * (1.0 - c) * sunCol;
+  float nh = max(dot(Ng, H), 0.0);
+  float glint = pow(nh, mix(150.0, 45.0, wind)) * mix(2.6, 1.3, wind) + pow(nh, 14.0) * 0.10;
+  col += glint * ocean * litG * (1.0 - c) * sunCol;
 
-  vec3 cloudCol = vec3(lit * 1.6 + 0.004) * mix(vec3(1.0), vec3(1.0, 0.55, 0.30), term * 0.85);
+  vec3 cloudCol = vec3(litG * 1.6 + 0.004) * mix(vec3(1.0), vec3(1.0, 0.55, 0.30), term * 0.85);
   col = mix(col, cloudCol, c * 0.96);
 
-  col += vec3(1.0, 0.60, 0.26) * lightsMap * (1.0 - day) * (1.0 - c * 0.85) * 1.3;
+  // brighter cities switch on first during the intro
+  float on = smoothstep(1.0 - uLights * 1.3, 1.3 - uLights * 1.3, lightsMap);
+  col += vec3(1.0, 0.60, 0.26) * lightsMap * on * (1.0 - day) * (1.0 - c * 0.85) * 1.3;
 
-  float fres = pow(1.0 - max(dot(N, V), 0.0), 2.4);
+  float fres = pow(1.0 - max(dot(Ng, V), 0.0), 2.4);
   vec3 atm = mix(vec3(0.22, 0.48, 1.0), vec3(1.0, 0.48, 0.22), term * 0.6);
   col = mix(col, atm * smoothstep(-0.25, 0.45, ndl) * 1.1, fres * 0.65);
-  col += vec3(0.020, 0.045, 0.110) * lit;
+  col += vec3(0.020, 0.045, 0.110) * litG;
 
   gl_FragColor = vec4(col, 1.0);
   ${OUTPUT}
@@ -305,6 +323,8 @@ uniform vec3 uAtm;
 uniform float uAtmAmt;
 uniform vec2 uTexel;
 uniform float uBump;
+uniform vec3 uEarth;
+uniform float uEarthshine;
 varying vec2 vUv;
 varying vec3 vN;
 varying vec3 vT;
@@ -329,8 +349,15 @@ void main() {
   float diff = mix(lit, sqrt(lit), 0.25) * smoothstep(-0.05, 0.08, dot(Ng, L));
   vec3 col = albedo * diff * 2.1 * vec3(1.0, 0.95, 0.88) + albedo * 0.006;
 
+  // earthshine: the night side is lit faintly by the Earth (Moon only)
+  col += albedo * uEarthshine * max(dot(Ng, normalize(uEarth - vP)), 0.0);
+
+  float ndlG = dot(Ng, L);
   float fres = pow(1.0 - max(dot(Ng, V), 0.0), 3.0);
-  col += uAtm * fres * smoothstep(-0.2, 0.5, dot(Ng, L)) * uAtmAmt;
+  col += uAtm * fres * smoothstep(-0.2, 0.5, ndlG) * uAtmAmt;
+  // dusty haze band along the terminator (Mars only: the Moon has no atmosphere colour)
+  float term = exp(-pow(ndlG * 4.5, 2.0));
+  col += uAtm * term * smoothstep(-0.15, 0.1, ndlG) * 0.25 * uAtmAmt;
 
   gl_FragColor = vec4(col, 1.0);
   ${OUTPUT}
@@ -452,6 +479,60 @@ uniform float uOpacity;
 varying float vA;
 void main() {
   gl_FragColor = vec4(vec3(0.72, 0.84, 1.0) * vA * uOpacity, 1.0);
+  ${OUTPUT}
+}
+`;
+
+/* ---------- the cruiser's exhaust plume (additive, burn only) ---------- */
+export const plumeVertex = /* glsl */ `
+varying vec3 vN;
+varying vec3 vP;
+varying float vS;
+void main() {
+  vS = 1.0 - uv.y; // 0 at the nozzle, 1 at the far end
+  vN = normalize(mat3(modelMatrix) * normal);
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vP = wp.xyz;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+export const plumeFrag = /* glsl */ `
+uniform float uBurn;
+uniform float uTime;
+uniform float uBands;
+varying vec3 vN;
+varying vec3 vP;
+varying float vS;
+void main() {
+  vec3 V = normalize(cameraPosition - vP);
+  float core = pow(abs(dot(normalize(vN), V)), 1.6);      // soft fresnel edge
+  float len = pow(1.0 - vS, 1.8) * smoothstep(0.0, 0.04, vS);
+  float diamonds = 0.5 + 0.5 * sin(vS * 28.0 - uTime * 40.0); // shock diamonds
+  float bands = 1.0 + uBands * 0.6 * diamonds * (1.0 - vS);
+  vec3 col = mix(vec3(0.85, 0.92, 1.0), vec3(0.25, 0.45, 1.0), smoothstep(0.0, 0.5, vS));
+  float a = core * len * bands * uBurn * 1.3;
+  gl_FragColor = vec4(col * a, 1.0);
+  ${OUTPUT}
+}
+`;
+
+/* ---------- soft window glow quads on the habitat ring (instanced) ---------- */
+export const windowGlowVertex = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+}
+`;
+
+export const windowGlowFrag = /* glsl */ `
+uniform vec3 uColor;
+varying vec2 vUv;
+void main() {
+  vec2 c = (vUv - 0.5) * 2.0;
+  float a = exp(-dot(c, c) * 3.0) * 0.55;
+  gl_FragColor = vec4(uColor * a, 1.0);
   ${OUTPUT}
 }
 `;

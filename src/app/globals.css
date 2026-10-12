@@ -3,8 +3,9 @@
 /* ========================================================================
    ORBIT VOYAGES — design tokens
    Palette: void / hull / line / ink / ember (Mars) / aurora (Earth)
-   Fonts:   Playfair Display (display) · Space Grotesk (text) · Space Mono (telemetry)
-   Spacing: 4px base — 4 8 12 16 24 32 48 64 96 128 192
+   Fonts:   Instrument Serif (display, the only preloaded face) · Space Grotesk (text) · Space Mono (telemetry)
+   Spacing: 4px base — 4 8 12 16 24 32 48 64 96 128 192 (use the --space-* tokens)
+   Shapes:  sharp editorial plates (0.375rem) with an ember corner tick; pill buttons
    ======================================================================== */
 @theme static {
   --color-void: #04050a;
@@ -66,12 +67,17 @@ h1,
 h2 {
   font-family: var(--font-display);
   font-weight: 400;
-  line-height: 0.98;
-  letter-spacing: -0.015em;
+  line-height: 0.92;
+  letter-spacing: -0.025em;
+  overflow-wrap: break-word;
 }
 h2 {
-  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-size: clamp(2.75rem, 7vw, 6rem);
   margin-bottom: var(--space-6);
+}
+/* split-line headings: each phrase is its own line (revealed one after another) */
+h2 .line {
+  display: block;
 }
 h1 em,
 h2 em {
@@ -141,7 +147,7 @@ main:focus {
 .eyebrow {
   font-family: var(--font-mono);
   font-size: 0.75rem;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--color-aurora);
@@ -149,6 +155,10 @@ main:focus {
 }
 .eyebrow--ember {
   color: var(--color-ember);
+}
+/* section index ("02 / 06 —"), matches the rail and the HUD legs */
+.eyebrow__n {
+  color: var(--color-ink);
 }
 .lead {
   font-size: clamp(1.0625rem, 1.6vw, 1.25rem);
@@ -159,10 +169,13 @@ main:focus {
 
 /* ---------------- buttons ---------------- */
 .btn {
+  position: relative;
+  isolation: isolate; /* the fill sweep sits between the background and the label */
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   min-height: 48px;
   white-space: nowrap;
   padding: 0 var(--space-6);
@@ -175,15 +188,39 @@ main:focus {
   border: 1px solid var(--color-ember);
   transition:
     transform 0.25s var(--ease),
+    translate 0.35s var(--ease),
     opacity 0.25s;
+}
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: #ff9a70;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.45s var(--ease);
 }
 .btn:hover {
   transform: translateY(-2px);
+}
+.btn:hover::after {
+  transform: scaleX(1);
+}
+.btn__arrow {
+  flex: none;
+  transition: transform 0.3s var(--ease);
+}
+.btn:hover .btn__arrow {
+  transform: translateX(3px);
 }
 .btn--ghost {
   background: rgb(4 5 10 / 0.55);
   color: var(--color-ink);
   border-color: rgb(238 241 248 / 0.4);
+}
+.btn--ghost::after {
+  background: rgb(238 241 248 / 0.08);
 }
 .btn--small {
   min-height: 44px;
@@ -199,6 +236,7 @@ main:focus {
   pointer-events: none;
   background: var(--color-void);
 }
+/* keep poster.svg under ~8 KB, no raster images inside (low entropy, so it never becomes the LCP) */
 .backdrop__poster {
   position: absolute;
   inset: 0;
@@ -261,6 +299,17 @@ html[data-webgl] .backdrop__status {
   padding: var(--space-3) var(--gutter);
   background: linear-gradient(180deg, rgb(4 5 10 / 0.9), rgb(4 5 10 / 0));
 }
+/* page progress, fed by FlightTracker (--p, 0..1); transform only */
+.site-header::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-aurora), var(--color-ember));
+  transform: scaleX(var(--p, 0));
+  transform-origin: left;
+  pointer-events: none;
+}
 .logo {
   display: inline-flex;
   align-items: center;
@@ -277,7 +326,7 @@ html[data-webgl] .backdrop__status {
 .logo__word {
   font-family: var(--font-mono);
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
@@ -429,20 +478,35 @@ html[data-webgl] .backdrop__status {
   min-height: 100svh;
   display: flex;
   align-items: center;
-  padding-block: var(--space-10);
+  padding-block: clamp(var(--space-9), 14vh, var(--space-11));
 }
+/* editorial plate: hairline frame, square top-left corner with an ember tick */
 .panel {
+  position: relative;
   max-width: 34rem;
-  padding: clamp(1.5rem, 4vw, 3rem);
+  padding: clamp(var(--space-5), 4vw, var(--space-7));
   background: var(--panel);
   border: 1px solid var(--color-line);
-  border-radius: 1.25rem;
+  border-radius: 0 0.375rem 0.375rem 0.375rem;
+}
+.panel::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 16px;
+  height: 16px;
+  background:
+    linear-gradient(var(--color-ember), var(--color-ember)) top left / 16px 1px no-repeat,
+    linear-gradient(var(--color-ember), var(--color-ember)) top left / 1px 16px no-repeat;
+  pointer-events: none;
 }
 .panel--wide {
   max-width: 44rem;
 }
 
-/* reveal: only once JS is running, only transform + opacity */
+/* reveal: only once JS is running, only transform + opacity.
+   data-motion follows the visitor's choice (OS setting by default, toggle overrides). */
 .reveal-ready .reveal {
   opacity: 0;
   transform: translateY(28px);
@@ -454,25 +518,66 @@ html[data-webgl] .backdrop__status {
   opacity: 1;
   transform: none;
 }
-@media (prefers-reduced-motion: reduce) {
-  .reveal-ready .reveal {
-    transform: none;
-    transition: opacity 0.4s;
-  }
+/* split-line h2: phrases rise one after another once their plate is in view */
+.reveal-ready .reveal .line {
+  opacity: 0;
+  transform: translateY(0.6em);
+  transition:
+    opacity 0.8s var(--ease),
+    transform 0.9s var(--ease);
+  transition-delay: calc(var(--i, 0) * 90ms + 120ms);
+}
+.reveal-ready .reveal.is-in .line {
+  opacity: 1;
+  transform: none;
+}
+html[data-motion="reduced"].reveal-ready .reveal,
+html[data-motion="reduced"].reveal-ready .reveal .line {
+  transform: none;
+  transition: opacity 0.4s;
 }
 
 /* ---------------- hero ---------------- */
 .hero {
   min-height: 100svh;
   padding-top: var(--space-10);
+  padding-bottom: var(--space-9); /* keeps the facts row clear of the HUD on 1366×768 */
 }
+/* capped by the viewport height too, so short laptop screens keep the facts above the fold */
 .hero__title {
-  font-size: clamp(3rem, 9vw, 8.5rem);
-  max-width: 11ch;
+  font-size: clamp(3.25rem, min(10.5vw, 14svh), 10rem);
+  max-width: 9.5ch;
   margin-bottom: var(--space-5);
 }
-.hero__title em {
+.hero__line {
   display: block;
+}
+
+/* Hero entrance (after hydration, full motion only).
+   LCP guard: the h1 and its lines keep opacity 1 from the first frame and move by transform only,
+   with no overflow mask — first paint is already the final, measurable LCP. */
+@keyframes rise {
+  from {
+    transform: translateY(var(--rise, 0.18em));
+  }
+}
+html[data-motion="full"].reveal-ready :is(.hero__eyebrow, .hero__line, .hero__lead, .hero__ctas, .facts) {
+  animation: rise 0.9s var(--ease) both;
+}
+html[data-motion="full"].reveal-ready .hero__line + .hero__line {
+  animation-delay: 120ms;
+}
+html[data-motion="full"].reveal-ready :is(.hero__eyebrow, .hero__lead, .hero__ctas, .facts) {
+  --rise: 16px;
+}
+html[data-motion="full"].reveal-ready .hero__lead {
+  animation-delay: 200ms;
+}
+html[data-motion="full"].reveal-ready .hero__ctas {
+  animation-delay: 280ms;
+}
+html[data-motion="full"].reveal-ready .facts {
+  animation-delay: 360ms;
 }
 .hero__lead {
   margin-bottom: var(--space-6);
@@ -500,8 +605,10 @@ html[data-webgl] .backdrop__status {
 }
 .facts dd {
   font-family: var(--font-display);
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  line-height: 1.2;
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .scroll-cue {
   position: absolute;
@@ -524,6 +631,7 @@ html[data-webgl] .backdrop__status {
   .hero {
     align-items: flex-start;
     padding-top: calc(var(--space-9) + var(--space-2));
+    padding-bottom: var(--space-10); /* room above the one-row HUD */
   }
   .facts {
     gap: var(--space-4);
@@ -566,7 +674,7 @@ html[data-webgl] .backdrop__status {
 /* ---------------- ship ---------------- */
 .features {
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-5) var(--space-6);
   margin-top: var(--space-6);
 }
 @media (min-width: 40rem) {
@@ -574,16 +682,17 @@ html[data-webgl] .backdrop__status {
     grid-template-columns: 1fr 1fr;
   }
 }
+/* spec sheet: a top hairline per item, no card-in-a-card */
 .feature {
-  padding: var(--space-5);
-  background: var(--color-hull-2);
-  border: 1px solid var(--color-line);
-  border-radius: 0.875rem;
+  padding: var(--space-5) 0 0;
+  border-top: 1px solid var(--color-line);
 }
 .feature__k {
   font-family: var(--font-display);
-  font-size: 2.25rem;
+  font-size: 2.75rem;
   line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: lining-nums tabular-nums;
   color: var(--color-ink);
   margin-bottom: var(--space-3);
 }
@@ -684,31 +793,43 @@ html[data-webgl] .backdrop__status {
   padding: var(--space-6);
   background: var(--panel);
   border: 1px solid var(--color-line);
-  border-radius: 1.25rem;
+  border-radius: 0.375rem;
 }
 .fare--featured {
   border-color: var(--color-ember);
   background: linear-gradient(180deg, rgb(38 16 8 / 0.95), rgb(11 14 24 / 0.92));
 }
+/* thin ember bar along the top of the featured fare */
+.fare--featured::before {
+  content: "";
+  position: absolute;
+  inset: -1px -1px auto -1px;
+  height: 3px;
+  border-radius: 0.375rem 0.375rem 0 0;
+  background: linear-gradient(90deg, var(--color-ember), rgb(255 122 69 / 0.15));
+  pointer-events: none;
+}
 .fare__tag {
   position: absolute;
+  z-index: 1;
   top: calc(-1 * var(--space-3));
   left: var(--space-6);
   padding: var(--space-1) var(--space-3);
-  border-radius: 999px;
+  border-radius: 0.25rem;
   background: var(--color-ember);
   color: var(--color-ember-ink);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 .fare h3 {
   font-family: var(--font-display);
   font-weight: 400;
-  font-size: 2rem;
-  line-height: 1.1;
+  font-size: 2.25rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
 }
 .fare__span {
   font-family: var(--font-mono);
@@ -722,8 +843,10 @@ html[data-webgl] .backdrop__status {
 }
 .fare__price {
   font-family: var(--font-display);
-  font-size: 2.5rem;
+  font-size: 2.75rem;
   line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: lining-nums tabular-nums;
   color: var(--color-ink);
   margin-bottom: var(--space-5);
 }
@@ -755,7 +878,7 @@ html[data-webgl] .backdrop__status {
   padding: var(--space-3) var(--space-4);
   background: rgb(4 5 10 / 0.85);
   border: 1px solid var(--color-line);
-  border-radius: 0.875rem;
+  border-radius: 0.375rem;
   font-family: var(--font-mono);
   font-size: 0.75rem;
   min-width: 15rem;
@@ -913,6 +1036,57 @@ html[data-webgl] .backdrop__status {
   background: var(--color-ember);
   border-color: var(--color-ember);
   transform: scale(1.5);
+}
+
+/* ---------------- pointer polish (desktop, added lazily by PointerFx) ---------------- */
+html.has-cursor,
+html.has-cursor * {
+  cursor: none;
+}
+.cursor-dot,
+.cursor-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+html.has-cursor .cursor-dot,
+html.has-cursor .cursor-ring {
+  opacity: 1;
+}
+.cursor-dot {
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--color-ember);
+}
+.cursor-ring {
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+}
+.cursor-ring span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgb(238 241 248 / 0.5);
+  border-radius: 50%;
+  transition:
+    transform 0.3s var(--ease),
+    border-color 0.3s,
+    background-color 0.3s;
+}
+.cursor-ring[data-hover] span {
+  transform: scale(1.6);
+  border-color: var(--color-ember);
+  background-color: rgb(255 122 69 / 0.08);
+}
+.cursor-ring[data-down] span {
+  transform: scale(0.85);
 }
 
 /* ---------------- footer ---------------- */

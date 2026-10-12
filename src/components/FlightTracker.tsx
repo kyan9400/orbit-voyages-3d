@@ -7,9 +7,11 @@
 */
 import { useEffect, useRef } from "react";
 import { flight, telemetry, SHOT_COUNT } from "@/lib/flight";
+import { readReducedMotion } from "@/lib/motion";
 import MotionToggle from "./MotionToggle";
 
 const LEGS = ["Earth orbit", "Lunar slingshot", "Cruise", "The coast", "Mars approach", "Mars orbit"];
+const BURN = { from: 2.15, to: 2.85, label: "Burn" }; // the engine fires between the ship and the coast
 const NAV = [
   { id: "launch", label: "Launch" },
   { id: "route", label: "The route" },
@@ -31,6 +33,11 @@ export default function FlightTracker() {
     let anchors: number[] = [];
     let raf = 0;
     let lastActive = -1;
+    let lastLabel = "";
+    let maxScroll = 1;
+    const root = document.documentElement;
+    // the progress line reads --p from the header only, so setting it there restyles one element, not the page
+    const header = document.querySelector<HTMLElement>(".site-header");
     // The HUD steps aside whenever it would sit on top of page content.
     let obstacles: HTMLElement[] = [];
     let hudBox = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -40,6 +47,7 @@ export default function FlightTracker() {
     const measure = () => {
       const vh = window.innerHeight;
       const max = Math.max(1, document.documentElement.scrollHeight - vh);
+      maxScroll = max;
       const list: number[] = [0];
       for (let i = 1; i < SHOT_COUNT; i++) {
         const el = document.querySelector<HTMLElement>(`[data-shot="${i}"]`);
@@ -98,10 +106,16 @@ export default function FlightTracker() {
       if (dayRef.current) dayRef.current.textContent = String(Math.round(t.day)).padStart(3, "0");
       if (distRef.current) distRef.current.textContent = t.dist < 10 ? t.dist.toFixed(2) : t.dist.toFixed(1);
       if (barRef.current) barRef.current.style.transform = `scaleX(${p / (SHOT_COUNT - 1)})`;
+      // page progress line under the header (transform only)
+      header?.style.setProperty("--p", Math.min(1, Math.max(0, y / maxScroll)).toFixed(4));
       const active = Math.min(SHOT_COUNT - 1, Math.round(p));
+      const label = p > BURN.from && p < BURN.to ? BURN.label : LEGS[active];
+      if (label !== lastLabel) {
+        lastLabel = label;
+        if (legRef.current) legRef.current.textContent = label;
+      }
       if (active !== lastActive) {
         lastActive = active;
-        if (legRef.current) legRef.current.textContent = LEGS[active];
         railRef.current?.querySelectorAll("a").forEach((a, i) => {
           if (i === active) a.setAttribute("aria-current", "step");
           else a.removeAttribute("aria-current");
@@ -136,7 +150,9 @@ export default function FlightTracker() {
       { rootMargin: "0px 0px -8% 0px" },
     );
     document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
-    document.documentElement.classList.add("reveal-ready");
+    // entrance animations follow the visitor's motion choice, not only the OS setting
+    root.dataset.motion = readReducedMotion() ? "reduced" : "full";
+    root.classList.add("reveal-ready");
 
     return () => {
       window.removeEventListener("scroll", onScroll);

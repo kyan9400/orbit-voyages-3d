@@ -14,6 +14,9 @@ export type QualitySettings = {
   marsBake: number;
   stars: number;
   streaks: number;
+  envMap: boolean; // RoomEnvironment PMREM reflections on the cruiser
+  shipDetail: 0 | 1 | 2; // 0 = standard materials, 1 = physical + clearcoat, 2 = + anisotropy, iridescence, glow quads
+  plume: boolean; // exhaust plume during the burn (two draws)
 };
 
 /** What the page should do with the 3D layer. */
@@ -22,9 +25,9 @@ export type QualityDecision =
   | { mode: "none"; reason: "no-webgl" | "software" };
 
 const TIERS: Record<Tier, Omit<QualitySettings, "tier">> = {
-  high: { dprCap: 2, antialias: true, bake: 2048, marsBake: 2048, stars: 7000, streaks: 1400 },
-  medium: { dprCap: 1.5, antialias: true, bake: 1024, marsBake: 1024, stars: 4000, streaks: 800 },
-  low: { dprCap: 1, antialias: false, bake: 1024, marsBake: 512, stars: 2000, streaks: 350 },
+  high: { dprCap: 2, antialias: true, bake: 2048, marsBake: 2048, stars: 7000, streaks: 1400, envMap: true, shipDetail: 2, plume: true },
+  medium: { dprCap: 1.5, antialias: true, bake: 1024, marsBake: 1024, stars: 4000, streaks: 800, envMap: true, shipDetail: 1, plume: true },
+  low: { dprCap: 1, antialias: false, bake: 1024, marsBake: 512, stars: 2000, streaks: 350, envMap: false, shipDetail: 0, plume: true },
 };
 
 const ORDER: Tier[] = ["low", "medium", "high"];

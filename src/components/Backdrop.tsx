@@ -15,6 +15,10 @@ import { useSyncExternalStore } from "react";
 import { getReducedServerSnapshot, getReducedSnapshot, subscribeNoop } from "@/lib/motion";
 import { decideQuality, type QualitySettings } from "@/lib/quality";
 
+/* CSS url("/poster.svg") ignores basePath, so the Pages mirror sets the image inline */
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const posterStyle = BASE ? { backgroundImage: `url("${BASE}/poster.svg")` } : undefined;
+
 const FlightCanvas = dynamic(() => import("@/three/FlightCanvas"), { ssr: false, loading: () => null });
 
 type IdleWindow = Window & {
@@ -66,7 +70,7 @@ export default function Backdrop() {
 
   return (
     <div className="backdrop" aria-hidden="true">
-      <div className="backdrop__poster" />
+      <div className="backdrop__poster" style={posterStyle} />
       <div className="backdrop__canvas">{q && <FlightCanvas q={q} reduced={reduced} />}</div>
       <div className="backdrop__scrim" />
       <p className="backdrop__status">Plotting trajectory…</p>

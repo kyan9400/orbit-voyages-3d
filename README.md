@@ -12,7 +12,7 @@ of copy is one leg of the trip.
 - Next.js 16 (App Router, TypeScript strict, `src/`), React 19
 - three.js 0.186 + @react-three/fiber 9 (render-on-demand canvas)
 - Tailwind CSS 4 (`@theme` design tokens) + hand-written CSS
-- Fonts via `next/font/google`; social image `app/opengraph-image.png` / `twitter-image.png` (a screenshot of the live site); favicon `app/icon.svg`
+- Fonts via `next/font/google` (Instrument Serif, Space Grotesk, Space Mono; only the two Instrument Serif files are preloaded); social image `app/opengraph-image.png` / `twitter-image.png` (a screenshot of the live site); favicon `app/icon.svg`
 
 Pinned versions follow the shared `STACK.md`. GSAP and Lenis are intentionally **not** installed: the page uses
 native scrolling and a single damping layer inside the 3D rig (PERF-RULES rule 5, "or skip Lenis entirely"),
@@ -30,6 +30,20 @@ which keeps the first-load bundle small.
 - **Starfield + nebula** that follow the camera (infinitely far), with a milky-way band and colour temperatures.
 - **Flight streaks:** line segments whose length follows the camera's velocity — dots at rest, streaks at speed.
 - **Camera rig:** centripetal Catmull-Rom curves through six shots, one per section; separate framing for portrait screens.
+- **The cruiser (`src/three/ship.ts`):** a smooth lathe hull from a spline profile (welded seam, smooth normals),
+  clearcoat paint, a brushed anisotropic habitat ring that catches the sun as it spins, iridescent gold-foil tanks,
+  procedural solar cells (generated `DataTexture` as colour + roughness), a glossy panorama dome lit from inside,
+  72 instanced cabin windows, panel lines, radiator fins, a docking collar, nav lights and a nose strobe.
+  Reflections from a `RoomEnvironment` PMREM (code-made, no HDRI). Low tier falls back to standard materials.
+- **Signature moment — trans-Mars injection:** between the ship and the coast sections the engine ignites (hot nozzle,
+  additive exhaust plume with shock diamonds) while the camera rides alongside and does a **dolly zoom** — the lens
+  narrows while the camera backs away, so the ship holds its size while space stretches behind it — then the ship
+  pulls away toward Mars and shrinks to a spark. It is a
+  pure function of scroll position, so reduced motion shows clean cuts. The HUD reads "Burn" meanwhile.
+- **"Lights on" intro:** as the canvas fades in over the poster, the Earth's night side switches on city by city
+  (brightest first) and the sun brightens.
+- **Planet details:** relief shading on Earth's land, a wind-broken ocean glint, earthshine on the Moon's night side,
+  a dusty haze band along the Martian terminator, and a noise-shaped Phobos with two crater dimples.
 
 ### Performance
 - `frameloop="demand"`: scrolling invalidates; the rig renders every frame only while it settles; ambient motion
@@ -39,7 +53,10 @@ which keeps the first-load bundle small.
 - Shaders compiled with `compileAsync` behind a poster before the canvas fades in.
 - 3D chunk loaded with `next/dynamic({ ssr: false })` only after window `load` + an idle callback + a tiny GPU probe;
   software renderers (SwiftShader, llvmpipe, …) never download it and keep the poster (`?quality=…` forces 3D on).
-  The world is built in slices that yield to the main thread. No `backdrop-filter` anywhere.
+  The world is built in slices that yield to the main thread (the PMREM environment is its own slice), and every
+  material — including the exhaust plume — is compiled before the canvas is shown. No `backdrop-filter` anywhere.
+- Desktop pointer polish (custom cursor, magnetic buttons) is its own ~1 KB chunk, imported after `load` + idle
+  only for a fine pointer with full motion.
 - `prefers-reduced-motion` respected by default (camera cuts between shots, no ambient motion) with a
   "Turn on full motion" toggle (`?motion=full` also works). Without WebGL a code-made SVG poster stays in place.
 
@@ -49,14 +66,15 @@ npm install
 npm run dev     # http://localhost:3000
 npm run build
 npm run lint
+npm run build:pages   # static GitHub Pages mirror in out/ (basePath /orbit-voyages-3d)
 ```
 
 ## Project layout
 ```
 src/app/            layout, page, 404, globals.css, icon.svg, opengraph/twitter image (PNG + alt), robots, sitemap
-src/components/     Backdrop (poster + lazy canvas), FlightTracker (scroll → shot, HUD), MobileMenu, MotionToggle
-src/three/          FlightCanvas (R3F wrapper), world.ts (scene + camera rig), shaders.ts (GLSL)
-src/lib/            flight store, quality tiers, motion preference
+src/components/     Backdrop (poster + lazy canvas), FlightTracker (scroll → shot, HUD), MobileMenu, MotionToggle, PointerFx
+src/three/          FlightCanvas (R3F wrapper), world.ts (scene + camera rig + burn), ship.ts (the cruiser), glow.ts, shaders.ts (GLSL)
+src/lib/            flight store, quality tiers, motion preference, pointer (lazy cursor + magnetic buttons)
 public/poster.svg   no-WebGL / pre-load poster
 SPEC.md             concept, copy, design system, budgets
 ```

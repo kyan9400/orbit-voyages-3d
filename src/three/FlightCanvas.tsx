@@ -56,8 +56,16 @@ function Engine({ q, reduced }: { q: QualitySettings; reduced: boolean }) {
         /* compile errors surface on first render instead */
       }
       if (!alive) return;
+      world.afterWarmup(); // the plume was kept visible only so it got compiled too
       invalidate();
-      requestAnimationFrame(() => requestAnimationFrame(() => alive && setWebglState("ready")));
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (!alive || !world) return;
+          setWebglState("ready");
+          world.startIntro(); // "lights on" while the canvas fades in over the poster
+          invalidate();
+        }),
+      );
     };
     void warm();
 

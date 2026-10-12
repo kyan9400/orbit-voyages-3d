@@ -83,11 +83,11 @@ bottom layer; the canvas fades in over it only when ready, and is removed on con
 | ember | `#FF7A45` | Mars accent, primary buttons (dark text `#1A0903`) |
 | aurora | `#7FD4FF` | Earth accent, telemetry |
 
-**Fonts** (Google Fonts, OFL, via `next/font`): Playfair Display (display, incl. italic), Space Grotesk (body/UI),
+**Fonts** (Google Fonts, OFL, via `next/font`): Instrument Serif (display, incl. italic), Space Grotesk (body/UI),
 Space Mono (telemetry labels).
 
 **Spacing scale** (4 px base): 4 · 8 · 12 · 16 · 24 · 32 · 48 · 64 · 96 · 128 · 192 (`--space-1` … `--space-11`).
-Type scale: 0.75 / 0.875 / 1 / 1.125 / 1.375 / 2 / 3 / clamp(3rem, 9vw, 8.5rem) rem.
+Type scale: 0.75 / 0.875 / 1 / 1.125 / 1.375 / 2 / 3 rem; h2 clamp(2.75rem, 7vw, 6rem); hero clamp(3.25rem, min(10.5vw, 14svh), 10rem).
 
 ## Copy
 
@@ -144,7 +144,7 @@ Telegram, WhatsApp, GitHub, portfolio · motion toggle · "© 2026 Alhassan Alfa
 ## Assets & licenses
 - 3D: all procedural, written for this project (no models, no textures, no HDRIs).
 - Poster, favicon, OG image: code-made (SVG / `next/og`).
-- Fonts: Playfair Display, Space Grotesk, Space Mono — SIL OFL 1.1 via `next/font/google`.
+- Fonts: Instrument Serif, Space Grotesk, Space Mono — SIL OFL 1.1 via `next/font/google`.
 - Hash function in shaders adapted from "Hash without Sine" (David Hoskins, MIT).
 - npm libraries: MIT (next, react, three, @react-three/fiber, @react-three/drei).
 

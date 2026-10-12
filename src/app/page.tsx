@@ -1,9 +1,27 @@
+import type { CSSProperties } from "react";
 import Backdrop from "@/components/Backdrop";
 import FlightTracker from "@/components/FlightTracker";
 import MobileMenu from "@/components/MobileMenu";
 import MotionToggle from "@/components/MotionToggle";
+import PointerFx from "@/components/PointerFx";
 
 const EMAIL = "kyan775909@gmail.com";
+const SITE_URL = "https://orbit-voyages-3d.vercel.app";
+const PORTFOLIO = "https://alhassan-portfolio-sigma.vercel.app";
+
+/* Structured data: the site and its author only (the brand is fictional, so no product or offer data). */
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Orbit Voyages",
+  url: SITE_URL,
+  description:
+    "Orbit Voyages flies twelve passengers at a time from low Earth orbit to Mars. Scroll the seven-month flight in real-time 3D.",
+  author: { "@type": "Person", name: "Alhassan Alfarran", url: PORTFOLIO },
+};
+
+/** stagger index for split-line reveals */
+const at = (i: number) => ({ "--i": i }) as CSSProperties;
 const seatMail = (fare: string) =>
   `mailto:${EMAIL}?subject=${encodeURIComponent(`Orbit Voyages — ${fare}`)}`;
 
@@ -111,6 +129,23 @@ const FARES = [
   },
 ];
 
+/** Section index for eyebrows ("02 / 06 — "): decorative, the label after it is the real text. */
+function Index({ n }: { n: number }) {
+  return (
+    <span className="eyebrow__n" aria-hidden="true">
+      {String(n).padStart(2, "0")} / 06 —{" "}
+    </span>
+  );
+}
+
+function Arrow() {
+  return (
+    <svg className="btn__arrow" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+      <path d="M1 7h11M8 3l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 function Logo() {
   return (
     <svg className="logo__mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
@@ -124,6 +159,11 @@ function Logo() {
 export default function Home() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        // static, server-rendered JSON (no user input)
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD).replace(/</g, "\\u003c") }}
+      />
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -148,6 +188,7 @@ export default function Home() {
         <div className="site-header__actions">
           <a className="btn btn--small site-header__cta" href={HEADER_CTA.href}>
             {HEADER_CTA.label}
+            <Arrow />
           </a>
           <MobileMenu links={SECTIONS} cta={HEADER_CTA} />
         </div>
@@ -157,9 +198,13 @@ export default function Home() {
         {/* 0 — HERO */}
         <section id="launch" data-shot="0" className="section hero" aria-labelledby="hero-title">
           <div className="wrap">
-            <p className="eyebrow">Passenger flights · Earth → Mars · Departures from 2031</p>
+            <p className="eyebrow hero__eyebrow">
+              <Index n={1} />
+              Passenger flights · Earth → Mars · Departures from 2031
+            </p>
+            {/* The LCP element: server-rendered, fully opaque from the first paint (entrance moves it, never fades it). */}
             <h1 id="hero-title" className="hero__title">
-              Leave the planet. <em>Keep the view.</em>
+              <span className="hero__line">Leave the planet.</span> <em className="hero__line">Keep the view.</em>
             </h1>
             <p className="lead hero__lead">
               Orbit Voyages flies twelve passengers at a time from low Earth orbit to the red horizons of Mars. Seven
@@ -168,9 +213,11 @@ export default function Home() {
             <div className="hero__ctas">
               <a className="btn" href="#book">
                 Plan your voyage
+                <Arrow />
               </a>
               <a className="btn btn--ghost" href="#route">
                 See the route
+                <Arrow />
               </a>
             </div>
             <dl className="facts">
@@ -197,9 +244,17 @@ export default function Home() {
         <section id="route" data-shot="1" className="section" aria-labelledby="route-title">
           <div className="wrap">
             <div className="panel panel--wide reveal">
-              <p className="eyebrow">The route</p>
+              <p className="eyebrow">
+                <Index n={2} />
+                The route
+              </p>
               <h2 id="route-title">
-                Five legs, <em>one long exhale.</em>
+                <span className="line" style={at(0)}>
+                  Five legs,
+                </span>{" "}
+                <span className="line" style={at(1)}>
+                  <em>one long exhale.</em>
+                </span>
               </h2>
               <ol className="legs">
                 {LEGS.map((leg) => (
@@ -224,9 +279,17 @@ export default function Home() {
         <section id="ship" data-shot="2" className="section" aria-labelledby="ship-title">
           <div className="wrap">
             <div className="panel panel--wide reveal">
-              <p className="eyebrow">The ship</p>
+              <p className="eyebrow">
+                <Index n={3} />
+                The ship
+              </p>
               <h2 id="ship-title">
-                The Meridian-class <em>cruiser.</em>
+                <span className="line" style={at(0)}>
+                  The Meridian-class
+                </span>{" "}
+                <span className="line" style={at(1)}>
+                  <em>cruiser.</em>
+                </span>
               </h2>
               <p className="lead">
                 Built for long nights, not short thrills. Every system has a twin, and every cabin has a window.
@@ -248,9 +311,17 @@ export default function Home() {
         <section id="aboard" data-shot="3" className="section" aria-labelledby="aboard-title">
           <div className="wrap">
             <div className="panel reveal">
-              <p className="eyebrow">Life aboard</p>
+              <p className="eyebrow">
+                <Index n={4} />
+                Life aboard
+              </p>
               <h2 id="aboard-title">
-                A day on <em>the coast.</em>
+                <span className="line" style={at(0)}>
+                  A day on
+                </span>{" "}
+                <span className="line" style={at(1)}>
+                  <em>the coast.</em>
+                </span>
               </h2>
               <ol className="day">
                 {DAY.map((d) => (
@@ -277,9 +348,17 @@ export default function Home() {
         <section id="mars" data-shot="4" className="section" aria-labelledby="mars-title">
           <div className="wrap">
             <div className="panel reveal">
-              <p className="eyebrow eyebrow--ember">Arrival · Day 210</p>
+              <p className="eyebrow eyebrow--ember">
+                <Index n={5} />
+                Arrival · Day 210
+              </p>
               <h2 id="mars-title">
-                Mars, <em>up close.</em>
+                <span className="line" style={at(0)}>
+                  Mars,
+                </span>{" "}
+                <span className="line" style={at(1)}>
+                  <em>up close.</em>
+                </span>
               </h2>
               <ul className="sights">
                 {SIGHTS.map((s) => (
@@ -297,9 +376,17 @@ export default function Home() {
         <section id="book" data-shot="5" className="section section--fares" aria-labelledby="book-title">
           <div className="wrap">
             <div className="fares-head reveal">
-              <p className="eyebrow">Voyages &amp; fares</p>
+              <p className="eyebrow">
+                <Index n={6} />
+                Voyages &amp; fares
+              </p>
               <h2 id="book-title">
-                Choose your <em>distance.</em>
+                <span className="line" style={at(0)}>
+                  Choose your
+                </span>{" "}
+                <span className="line" style={at(1)}>
+                  <em>distance.</em>
+                </span>
               </h2>
             </div>
             <ul className="fares">
@@ -314,6 +401,7 @@ export default function Home() {
                   </p>
                   <a className={`btn ${f.featured ? "" : "btn--ghost"} fare__cta`} href={seatMail(f.name)}>
                     Request a seat<span className="sr-only"> on {f.name}</span>
+                    <Arrow />
                   </a>
                 </li>
               ))}
@@ -339,10 +427,10 @@ export default function Home() {
             <p className="footer__name">Alhassan Alfarran</p>
             <ul className="footer__links">
               <li><a href={`mailto:${EMAIL}`}>Email</a></li>
-              <li><a href="https://t.me/hassan_9400" rel="noopener noreferrer" target="_blank">Telegram</a></li>
-              <li><a href="https://wa.me/79193999749" rel="noopener noreferrer" target="_blank">WhatsApp</a></li>
-              <li><a href="https://github.com/kyan9400" rel="noopener noreferrer" target="_blank">GitHub</a></li>
-              <li><a href="https://alhassan-portfolio-sigma.vercel.app" rel="noopener noreferrer" target="_blank">Portfolio</a></li>
+              <li><a href="https://t.me/hassan_9400" rel="noopener noreferrer" target="_blank">Telegram<span className="sr-only"> (opens in a new tab)</span></a></li>
+              <li><a href="https://wa.me/79193999749" rel="noopener noreferrer" target="_blank">WhatsApp<span className="sr-only"> (opens in a new tab)</span></a></li>
+              <li><a href="https://github.com/kyan9400" rel="noopener noreferrer" target="_blank">GitHub<span className="sr-only"> (opens in a new tab)</span></a></li>
+              <li><a href={PORTFOLIO} rel="noopener noreferrer" target="_blank">Portfolio<span className="sr-only"> (opens in a new tab)</span></a></li>
             </ul>
           </div>
           <div className="footer__end">
@@ -353,6 +441,7 @@ export default function Home() {
       </footer>
 
       <FlightTracker />
+      <PointerFx />
     </>
   );
 }
