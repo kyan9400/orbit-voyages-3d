@@ -28,6 +28,8 @@ import {
   earthDataFrag,
   earthFrag,
   earthSurfaceFrag,
+  flareFrag,
+  flareVertex,
   planetVertex,
   rockyBakeFrag,
   rockyFrag,
@@ -43,11 +45,17 @@ import {
 const SUN_DIR = new THREE.Vector3(1, 0.25, -0.35).normalize();
 const BAND = new THREE.Vector3(0.3, 0.9, 0.3).normalize(); // milky-way plane normal
 const EARTH = new THREE.Vector3(0, 0, 0);
-const MOON = new THREE.Vector3(3, 0.7, -7.5);
+const MOON = new THREE.Vector3(1.8, 1.0, -7.8);
 const SHIP = new THREE.Vector3(5.2, 1.3, -26);
 const MARS = new THREE.Vector3(6, 0.4, -72);
 const MARS_R = 0.9;
 const SHIP_ROT = new THREE.Euler(0.08, -0.12, 0.18);
+/* Hero: the same cruiser, parked in low orbit in the foreground of the sunrise (scaled down,
+   silhouetted against the night side). It jumps to its deep-space station while the camera
+   faces the Moon, so the swap is never on screen. */
+const HERO_SHIP = { landscape: new THREE.Vector3(-0.992, 0.592, -0.288), portrait: new THREE.Vector3(-1.103, 0.612, 0.58) };
+const HERO_HEADING = { landscape: new THREE.Vector3(0.853, 0.142, 0.503), portrait: new THREE.Vector3(0.748, 0.291, 0.596) };
+const HERO_SCALE = { landscape: 0.06, portrait: 0.045 };
 const INTRO_S = 1.8; // "lights on" after the canvas appears
 const DEPART = 400; // how far ahead the ship has flown by shot 3 (it is hidden by then)
 
@@ -63,10 +71,10 @@ type Shot = { pos: V3; look: V3; pPos: V3; pLook: V3 };
 /* One shot per page section: landscape framing keeps the subject right of the
    text column; portrait framing puts it low and central under the text. */
 const SHOTS: Shot[] = [
-  // 0 hero — Earth crescent, city lights on the night side
-  { pos: [-0.35, 0.3, 3.1], look: [-1.05, 0.12, 0], pPos: [0.15, 0.2, 3.7], pLook: [0, 0.95, 0] },
-  // 1 route — rising over the Earth's limb, the Moon ahead
-  { pos: [0.6, 1.25, 1.6], look: [1.2, -0.2, -7.5], pPos: [0.8, 1.45, 2.1], pLook: [2.4, 0.3, -7.5] },
+  // 0 hero — orbital sunrise: the night side and its cities fill the lower right, the sun breaks over the limb
+  { pos: [-1.453, 0.605, -0.096], look: [1.095, 0.72, -1.677], pPos: [-1.68, 0.645, 0.805], pLook: [0.771, 1.789, -0.494] },
+  // 1 route — lunar slingshot: close past the Moon, its terminator and craters filling the right of the frame
+  { pos: [2.98, 1.34, -6.62], look: [1.51, 1.0, -7.51], pPos: [3.2, 1.9, -6.4], pLook: [1.8, 1.6, -7.8] },
   // 2 ship — alongside the cruiser
   { pos: [4.0, 1.75, -23.6], look: [4.6, 1.3, -26.5], pPos: [4.5, 2.05, -22.6], pLook: [5.2, 0.95, -26] },
   // 3 aboard — the long coast, Mars a red spark ahead
@@ -88,6 +96,25 @@ export function yieldToMain(): Promise<void> {
 }
 
 /* ---------------- GPU bake ---------------- */
+/** 64³ random lattice for the bake shaders' value noise (built once, ~0.3 MB, freed after the bakes). */
+function noiseLattice(): THREE.Data3DTexture {
+  const N = 64;
+  const data = new Uint8Array(N * N * N);
+  const r = rng(1337);
+  for (let i = 0; i < data.length; i++) data[i] = Math.floor(r() * 256);
+  const tex = new THREE.Data3DTexture(data, N, N, N);
+  tex.format = THREE.RedFormat;
+  tex.type = THREE.UnsignedByteType;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.wrapS = tex.wrapT = tex.wrapR = THREE.RepeatWrapping;
+  tex.unpackAlignment = 1;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+let lattice: THREE.Data3DTexture | null = null;
+
 function bake(
   renderer: THREE.WebGLRenderer,
   width: number,
@@ -106,7 +133,12 @@ function bake(
     wrapT: THREE.ClampToEdgeWrapping,
   });
   rt.texture.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-  const mat = new THREE.ShaderMaterial({ vertexShader: bakeVertex, fragmentShader: frag, uniforms, depthTest: false });
+  const mat = new THREE.ShaderMaterial({
+    vertexShader: bakeVertex,
+    fragmentShader: frag,
+    uniforms: { ...uniforms, uNoise: { value: lattice } },
+    depthTest: false,
+  });
   const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
   const scene = new THREE.Scene();
   scene.add(quad);
@@ -121,8 +153,14 @@ function bake(
 }
 
 /* ---------------- small factories ---------------- */
-function atmosphereShell(radius: number, scale: number, color: THREE.Color, sunset: THREE.Color, intensity: number) {
-  const inner = Math.sqrt(1 - 1 / (scale * scale)); // where the planet's limb sits inside the shell
+function atmosphereShell(
+  center: THREE.Vector3,
+  radius: number,
+  scale: number,
+  color: THREE.Color,
+  sunset: THREE.Color,
+  intensity: number,
+) {
   const mat = new THREE.ShaderMaterial({
     vertexShader: planetVertex,
     fragmentShader: atmosphereFrag,
@@ -130,7 +168,9 @@ function atmosphereShell(radius: number, scale: number, color: THREE.Color, suns
       uSun: { value: SUN_DIR },
       uColor: { value: color },
       uSunset: { value: sunset },
-      uInner: { value: inner },
+      uCenter: { value: center },
+      uRadius: { value: radius },
+      uShell: { value: scale },
       uIntensity: { value: intensity },
     },
     side: THREE.BackSide,
@@ -138,7 +178,9 @@ function atmosphereShell(radius: number, scale: number, color: THREE.Color, suns
     depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
-  return new THREE.Mesh(new THREE.SphereGeometry(radius * scale, 96, 48), mat);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius * scale, 96, 48), mat);
+  mesh.position.copy(center);
+  return mesh;
 }
 
 /** A seeded random generator, so the layout is identical on every visit. */
@@ -220,6 +262,16 @@ export class OrbitWorld {
   private ship: Ship;
   private sunGlow: GlowSprite;
   private sky = new THREE.Group();
+  private flare: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
+  private readonly sunNdc = new THREE.Vector3();
+  private readonly toBody = new THREE.Vector3();
+  private readonly camFwd = new THREE.Vector3();
+  private readonly drift = new THREE.Vector3();
+  private readonly bodies: { c: THREE.Vector3; r: number }[] = [
+    { c: EARTH, r: 1 },
+    { c: MOON, r: 0.4 },
+    { c: MARS, r: MARS_R },
+  ];
   private earthMat: THREE.ShaderMaterial;
   private starsMat: THREE.ShaderMaterial;
   private streaksMat: THREE.ShaderMaterial;
@@ -237,6 +289,7 @@ export class OrbitWorld {
   private warm = false; // true once compileAsync has seen every material
   private introT = -1; // seconds into the "lights on" intro; -1 = not started
   private readonly shipForward = new THREE.Vector3(0, 0, -1).applyEuler(SHIP_ROT);
+  private readonly heroQ = { landscape: new THREE.Quaternion(), portrait: new THREE.Quaternion() };
   private readonly tmpDir = new THREE.Vector3();
   private readonly tmpPos = new THREE.Vector3();
   private readonly tmpLook = new THREE.Vector3();
@@ -270,8 +323,14 @@ export class OrbitWorld {
       made.push(rt);
       return rt;
     };
+    lattice = noiseLattice();
+    const freeLattice = () => {
+      lattice?.dispose();
+      lattice = null;
+    };
     const abort = () => {
       made.forEach((rt) => rt.dispose());
+      freeLattice();
       return null;
     };
 
@@ -308,6 +367,7 @@ export class OrbitWorld {
     if (!moonMap) return abort();
     const skyMap = await step(() => bake(renderer, 1024, skyBakeFrag, { uBand: { value: BAND } }, false));
     if (!skyMap) return abort();
+    freeLattice();
 
     /* ---- studio reflections for the cruiser (its own slice; not on the low tier) ---- */
     let env: THREE.WebGLRenderTarget | null = null;
@@ -340,7 +400,7 @@ export class OrbitWorld {
 
     /* ---- Earth: tilted axis, spinning surface, clouds drift in the shader ---- */
     const earthTilt = new THREE.Group();
-    earthTilt.rotation.z = 0.41;
+    earthTilt.rotation.z = -0.41; // north pole leans away from the hero camera: the lit cities sit in temperate latitudes
     earthTilt.position.copy(EARTH);
     this.earthMat = new THREE.ShaderMaterial({
       vertexShader: planetVertex,
@@ -361,7 +421,7 @@ export class OrbitWorld {
     this.earthSpin.rotation.y = 2.2;
     earthTilt.add(this.earthSpin);
     this.root.add(earthTilt);
-    const earthAtm = atmosphereShell(1, 1.1, new THREE.Color(0.22, 0.5, 1.0), new THREE.Color(1.0, 0.5, 0.25), 0.9);
+    const earthAtm = atmosphereShell(EARTH, 1, 1.06, new THREE.Color(0.22, 0.5, 1.0), new THREE.Color(1.0, 0.5, 0.25), 0.9);
     earthAtm.position.copy(EARTH);
     this.root.add(earthAtm);
 
@@ -383,7 +443,7 @@ export class OrbitWorld {
       });
     this.moon = new THREE.Mesh(
       new THREE.SphereGeometry(0.4, 64, 32),
-      rockyMat(moonMap.texture, 512, new THREE.Color(0, 0, 0), 0, 0.06, 0.035),
+      rockyMat(moonMap.texture, 512, new THREE.Color(0, 0, 0), 0, 0.042, 0.035),
     );
     this.moon.position.copy(MOON);
     this.root.add(this.moon);
@@ -400,7 +460,7 @@ export class OrbitWorld {
     this.marsSpin.rotation.y = 3.6;
     marsTilt.add(this.marsSpin);
     this.root.add(marsTilt);
-    const marsAtm = atmosphereShell(MARS_R, 1.05, new THREE.Color(0.95, 0.55, 0.38), new THREE.Color(0.55, 0.62, 0.9), 1.1);
+    const marsAtm = atmosphereShell(MARS, MARS_R, 1.05, new THREE.Color(0.95, 0.55, 0.38), new THREE.Color(0.55, 0.62, 0.9), 1.1);
     marsAtm.position.copy(MARS);
     this.root.add(marsAtm);
     this.phobos = buildPhobos();
@@ -411,6 +471,14 @@ export class OrbitWorld {
     this.ship.group.position.copy(SHIP);
     this.ship.group.rotation.copy(SHIP_ROT);
     this.root.add(this.ship.group);
+    // hero attitude: nose (-z) along the heading, a slight roll so the ring reads as an ellipse
+    const look = new THREE.Object3D();
+    for (const k of ["landscape", "portrait"] as const) {
+      look.position.set(0, 0, 0);
+      look.lookAt(HERO_HEADING[k].clone().negate()); // +z away from the heading → nose along it
+      look.rotateZ(0.5);
+      this.heroQ[k].copy(look.quaternion);
+    }
 
     /* ---- lights for the lit materials (ship, Phobos) ---- */
     const sun = new THREE.DirectionalLight("#fff3e2", 3.2);
@@ -492,6 +560,29 @@ export class OrbitWorld {
     this.sky.add(sunGlow);
     this.sunGlow = sunGlow;
     this.root.add(this.sky);
+
+    /* ---- lens flare: full-screen additive pass, only drawn while the sun is near the frame ---- */
+    this.flare = new THREE.Mesh(
+      new THREE.PlaneGeometry(2, 2),
+      new THREE.ShaderMaterial({
+        vertexShader: flareVertex,
+        fragmentShader: flareFrag,
+        uniforms: {
+          uSun: { value: new THREE.Vector2() },
+          uAspect: { value: 1 },
+          uVis: { value: 0 },
+          uGlare: { value: 0 },
+          uTint: { value: new THREE.Color(1.0, 0.86, 0.66) },
+        },
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    this.flare.frustumCulled = false;
+    this.flare.renderOrder = 20;
+    this.root.add(this.flare);
 
     /* ---- camera curves ---- */
     this.landscape = { pos: curve(SHOTS.map((s) => s.pos)), look: curve(SHOTS.map((s) => s.look)) };
@@ -590,19 +681,30 @@ export class OrbitWorld {
       if (Math.abs(target - this.current) < 0.0004) this.current = target;
     }
     const moved = this.first || this.current !== before;
+    // slow hand-held drift (full motion only), strongest on the hero shot
+    const drifting = !this.reduced;
 
-    if (moved) {
+    if (moved || drifting) {
       const rig = this.isPortrait ? this.portrait : this.landscape;
       const i = Math.min(SHOT_COUNT - 2, Math.floor(this.current));
       const f = this.current - i;
-      const eased = f + (f * f * (3 - 2 * f) - f) * 0.55; // linger on each shot
+      // hold each chapter's composition for the first part of its leg, then glide to the next
+      const g = Math.min(1, Math.max(0, (f - 0.14) / 0.86));
+      const eased = g * g * g * (g * (g * 6 - 15) + 10);
       const t = (i + eased) / (SHOT_COUNT - 1);
       rig.pos.getPoint(t, this.tmpPos);
       rig.look.getPoint(t, this.tmpLook);
       this.flyShip(camera); // may adjust the camera during the burn
+      if (drifting) {
+        const k = 0.012 + 0.02 * (1 - smoothstep(0, 1, this.current));
+        const t = this.time;
+        this.drift.set(Math.sin(t * 0.21) * k, Math.sin(t * 0.17 + 1.3) * k * 0.6, Math.cos(t * 0.13) * k * 0.8);
+        this.tmpPos.add(this.drift);
+      }
       camera.position.copy(this.tmpPos);
       camera.lookAt(this.tmpLook);
     }
+    this.updateFlare(camera, aspect);
 
     // flight streaks: trail length follows the camera's speed
     if (!this.reduced && !this.first && dt > 0) {
@@ -653,6 +755,36 @@ export class OrbitWorld {
     return this.reduced ? "idle" : "ambient";
   }
 
+  /** Sun position on screen and how much of it the planets hide (angular radius vs. angle to the sun). */
+  private updateFlare(camera: THREE.PerspectiveCamera, aspect: number) {
+    const u = this.flare.material.uniforms;
+    camera.getWorldDirection(this.camFwd);
+    const facing = this.camFwd.dot(SUN_DIR);
+    if (facing < 0.5) {
+      this.flare.visible = false;
+      return;
+    }
+    this.sunNdc.copy(SUN_DIR).multiplyScalar(1000).add(camera.position).project(camera);
+    let vis = smoothstep(0.5, 0.8, facing);
+    let glare = 0;
+    for (let i = 0; i < this.bodies.length; i++) {
+      const b = this.bodies[i];
+      this.toBody.subVectors(b.c, camera.position);
+      const dist = this.toBody.length();
+      const theta = Math.acos(Math.min(1, this.toBody.dot(SUN_DIR) / dist)); // angle sun ↔ body centre
+      const alpha = Math.asin(Math.min(1, b.r / dist)); // angular radius
+      const edge = theta - alpha; // > 0: sun is outside the disc
+      const soft = 0.6 * DEG + alpha * 0.02;
+      vis *= smoothstep(-soft, soft * 2.5, edge);
+      glare = Math.max(glare, Math.exp(-Math.pow(edge / (3 * DEG), 2)));
+    }
+    this.flare.visible = vis > 0.002;
+    u.uSun.value.set(this.sunNdc.x, this.sunNdc.y);
+    u.uAspect.value = aspect;
+    u.uVis.value = vis * this.sunGlow.material.uniforms.uIntensity.value / 1.4;
+    u.uGlare.value = glare;
+  }
+
   /**
    * Burn, departure and dolly zoom: all pure functions of the shot position.
    * Works on tmpPos / tmpLook (the camera rig) before they are applied.
@@ -665,6 +797,26 @@ export class OrbitWorld {
     const s2 = this.isPortrait ? this.shot2.portrait : this.shot2.landscape;
 
     const ship = this.ship;
+    if (c < 1) {
+      // parked in the hero frame, drifting very slowly along its orbit
+      const k = this.isPortrait ? "portrait" : "landscape";
+      ship.group.position.copy(HERO_SHIP[k]).addScaledVector(HERO_HEADING[k], Math.sin(this.time * 0.05) * 0.01);
+      ship.group.quaternion.copy(this.heroQ[k]);
+      ship.group.scale.setScalar(HERO_SCALE[k]);
+      ship.burn.value = 0;
+      ship.engineLight.material.uniforms.uIntensity.value = 0.45;
+      ship.engineLight.material.uniforms.uSize.value = 0.32;
+      ship.plume.material.uniforms.uBurn.value = 0;
+      this.burn = 0;
+      if (this.warm) this.applyShipVisibility();
+      if (camera.fov !== this.baseFov) {
+        camera.fov = this.baseFov;
+        camera.updateProjectionMatrix();
+      }
+      return;
+    }
+    ship.group.scale.setScalar(1);
+    ship.group.rotation.set(SHIP_ROT.x, SHIP_ROT.y, SHIP_ROT.z);
     const pos = ship.group.position.copy(SHIP);
     if (c > 2 && c < 3) {
       // ride along with the camera (the frame holds on the ship), then leave toward Mars
@@ -675,8 +827,8 @@ export class OrbitWorld {
     }
     ship.group.rotation.z = SHIP_ROT.z + away * 0.25;
     ship.burn.value = burn;
-    ship.engineLight.material.uniforms.uIntensity.value = 0.9 + burn * 4;
-    ship.engineLight.material.uniforms.uSize.value = 0.55 + burn * 1.6;
+    ship.engineLight.material.uniforms.uIntensity.value = 0.45 + burn * 2.2;
+    ship.engineLight.material.uniforms.uSize.value = 0.32 + burn * 0.9;
     ship.plume.material.uniforms.uBurn.value = burn;
     // hidden only after the warm-up has compiled it (a reload deep in the page starts past shot 3)
     if (this.warm) this.applyShipVisibility();

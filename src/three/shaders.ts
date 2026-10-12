@@ -20,19 +20,15 @@ float hash13(vec3 p3) {
   return fract((p3.x + p3.y) * p3.z);
 }
 
+// value noise from a 64^3 random lattice in a 3D texture: one hardware-filtered fetch with
+// quintic smoothing (offsetting the coordinate inside the cell). Far cheaper to compile than
+// eight inlined hashes per call, which used to cost tens of seconds on D3D (ANGLE).
+uniform highp sampler3D uNoise;
 float vnoise(vec3 p) {
   vec3 i = floor(p);
   vec3 f = fract(p);
-  vec3 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-  float a = hash13(i);
-  float b = hash13(i + vec3(1.0, 0.0, 0.0));
-  float c = hash13(i + vec3(0.0, 1.0, 0.0));
-  float d = hash13(i + vec3(1.0, 1.0, 0.0));
-  float e = hash13(i + vec3(0.0, 0.0, 1.0));
-  float f1 = hash13(i + vec3(1.0, 0.0, 1.0));
-  float g = hash13(i + vec3(0.0, 1.0, 1.0));
-  float h = hash13(i + vec3(1.0, 1.0, 1.0));
-  return mix(mix(mix(a, b, u.x), mix(c, d, u.x), u.y), mix(mix(e, f1, u.x), mix(g, h, u.x), u.y), u.z);
+  f = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+  return texture(uNoise, (i + f + 0.5) / 64.0).r;
 }
 
 float fbm(vec3 p) {
@@ -128,7 +124,7 @@ void main() {
   float clouds = smoothstep(0.50, 0.74, c);
 
   // city lights: populated coasts and temperate bands, as fine specks
-  float pop = smoothstep(0.55, 0.78, fbm(d * 4.5 + 40.0)) * (1.0 - smoothstep(0.55, 0.78, lat));
+  float pop = smoothstep(0.55, 0.78, fbm(d * 4.5 + 40.0)) * (1.0 - smoothstep(0.74, 0.9, lat));
   float coast = 1.0 - smoothstep(0.0, 0.05, h - SEA);
   float speck = smoothstep(0.70, 0.95, vnoise(d * 170.0)) * 0.8 + smoothstep(0.80, 0.97, vnoise(d * 430.0)) * 0.6;
   float lights = clamp(land * (pop * 0.85 + coast * pop * 0.7) * speck, 0.0, 1.0);
@@ -213,9 +209,15 @@ void main() {
   float cl = fbm(d * 3.0 + fbm(d * 2.0));
   float lanes = smoothstep(0.48, 0.70, fbm(d * 7.0 + 3.0));
   vec3 col = vec3(0.060, 0.066, 0.110) * band * (0.4 + cl) * (1.0 - lanes * 0.65 * band);
-  col += vec3(0.130, 0.035, 0.070) * smoothstep(0.56, 0.82, fbm(d * 2.4 + 50.0)) * 0.30;
-  col += vec3(0.020, 0.060, 0.100) * smoothstep(0.52, 0.80, fbm(d * 2.0 + 90.0)) * 0.30;
-  gl_FragColor = vec4(sqrt(col * 0.55), 1.0);
+  // emission nebulae: a warm magenta cloud and a cool teal one, with brighter filaments inside
+  vec3 nw = vec3(fbm(d * 2.2 + 70.0), fbm(d * 2.2 + 80.0), fbm(d * 2.2 + 85.0)) - 0.5;
+  float neb1 = smoothstep(0.52, 0.80, fbm(d * 2.4 + nw * 1.4 + 50.0));
+  float neb2 = smoothstep(0.50, 0.80, fbm(d * 2.0 + nw * 1.2 + 90.0));
+  float fil = smoothstep(0.55, 0.75, fbm(d * 9.0 + nw * 3.0));
+  col += vec3(0.170, 0.040, 0.090) * neb1 * (0.45 + fil * 0.8);
+  col += vec3(0.025, 0.085, 0.130) * neb2 * (0.45 + fil * 0.7);
+  col *= 1.0 - lanes * 0.4 * (neb1 + neb2);
+  gl_FragColor = vec4(sqrt(col * 0.7), 1.0);
 }
 `;
 
@@ -306,6 +308,10 @@ void main() {
   float on = smoothstep(1.0 - uLights * 1.3, 1.3 - uLights * 1.3, lightsMap);
   col += vec3(1.0, 0.60, 0.26) * lightsMap * on * (1.0 - day) * (1.0 - c * 0.85) * 1.3;
 
+  // moonlit night side: a faint cool fill so the dark hemisphere still reads as a sphere
+  float night = 1.0 - day;
+  col += (albedo * vec3(0.05, 0.07, 0.12) + c * vec3(0.010, 0.013, 0.022)) * night;
+
   float fres = pow(1.0 - max(dot(Ng, V), 0.0), 2.4);
   vec3 atm = mix(vec3(0.22, 0.48, 1.0), vec3(1.0, 0.48, 0.22), term * 0.6);
   col = mix(col, atm * smoothstep(-0.25, 0.45, ndl) * 1.1, fres * 0.65);
@@ -368,7 +374,9 @@ export const atmosphereFrag = /* glsl */ `
 uniform vec3 uSun;
 uniform vec3 uColor;
 uniform vec3 uSunset;
-uniform float uInner;
+uniform vec3 uCenter;
+uniform float uRadius;
+uniform float uShell;     // shell radius / planet radius
 uniform float uIntensity;
 varying vec2 vUv;
 varying vec3 vN;
@@ -376,14 +384,26 @@ varying vec3 vT;
 varying vec3 vB;
 varying vec3 vP;
 void main() {
-  vec3 N = normalize(vN);
-  vec3 V = normalize(cameraPosition - vP);
-  float k = clamp(-dot(N, V), 0.0, 1.0);          // 0 at the outer edge of the shell
-  float glow = pow(smoothstep(0.0, uInner, k), 2.6);
-  float sunSide = smoothstep(-0.4, 0.6, dot(N, uSun));
-  float forward = pow(max(dot(-V, uSun), 0.0), 6.0); // sun behind the planet
-  vec3 col = mix(uColor, uSunset, clamp((1.0 - sunSide) * 0.6 + forward * 0.5, 0.0, 1.0));
-  float a = glow * (sunSide + forward * 1.6) * uIntensity;
+  // the view ray's closest approach to the planet centre gives the altitude it grazes
+  vec3 dir = normalize(vP - cameraPosition);
+  vec3 oc = uCenter - cameraPosition;
+  float tc = max(dot(oc, dir), 0.0);
+  vec3 pc = cameraPosition + dir * tc;
+  float h = length(pc - uCenter) / uRadius;           // 1 = surface, uShell = top of the shell
+  float alt = clamp((h - 1.0) / (uShell - 1.0), 0.0, 1.0);
+  float dens = exp(-alt * 6.0) * smoothstep(1.0, 0.85, alt);
+
+  vec3 n = normalize(pc - uCenter);
+  float mu = dot(n, uSun);
+  float sunSide = smoothstep(-0.28, 0.35, mu);
+  float twilight = exp(-pow(mu * 3.2, 2.0));           // the terminator band
+  float mie = pow(max(dot(dir, uSun), 0.0), 10.0);      // forward scattering toward the sun
+  float mieWide = pow(max(dot(dir, uSun), 0.0), 3.0);
+
+  // Rayleigh: deep blue high up, paler near the ground; sunset colours low along the terminator
+  vec3 col = mix(uColor, mix(uColor, vec3(1.0), 0.55), exp(-alt * 7.0));
+  col = mix(col, uSunset, twilight * exp(-alt * 3.5) * 0.85);
+  float a = dens * (sunSide * 0.85 + twilight * 0.6 * mieWide + mie * 2.2 * (0.3 + twilight)) * uIntensity;
   gl_FragColor = vec4(col * a, 1.0);
   ${OUTPUT}
 }
@@ -395,7 +415,7 @@ varying vec2 vUv;
 void main() {
   vUv = uv;
   vec4 mv = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-  mv.xy += position.xy * uSize;
+  mv.xy += position.xy * uSize * length(modelMatrix[0].xyz); // follows the parent's scale
   gl_Position = projectionMatrix * mv;
 }
 `;
@@ -511,7 +531,7 @@ void main() {
   float diamonds = 0.5 + 0.5 * sin(vS * 28.0 - uTime * 40.0); // shock diamonds
   float bands = 1.0 + uBands * 0.6 * diamonds * (1.0 - vS);
   vec3 col = mix(vec3(0.85, 0.92, 1.0), vec3(0.25, 0.45, 1.0), smoothstep(0.0, 0.5, vS));
-  float a = core * len * bands * uBurn * 1.3;
+  float a = core * len * bands * uBurn * 0.9;
   gl_FragColor = vec4(col * a, 1.0);
   ${OUTPUT}
 }
@@ -533,6 +553,60 @@ void main() {
   vec2 c = (vUv - 0.5) * 2.0;
   float a = exp(-dot(c, c) * 3.0) * 0.55;
   gl_FragColor = vec4(uColor * a, 1.0);
+  ${OUTPUT}
+}
+`;
+
+/* ---------- sun lens flare: one full-screen additive pass, drawn last ----------
+   Starburst + anamorphic streak at the sun, a few chromatic ghosts mirrored through
+   the centre of the frame, and a faint halo ring. uVis carries the occlusion by the
+   planets (computed on the CPU from their angular radii), so the flare blooms as the
+   sun clears a limb and dies when it sets. */
+export const flareVertex = /* glsl */ `
+varying vec2 vNdc;
+void main() {
+  vNdc = position.xy;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`;
+
+export const flareFrag = /* glsl */ `
+uniform vec2 uSun;      // sun position in NDC
+uniform float uAspect;
+uniform float uVis;     // 0 hidden … 1 fully visible
+uniform float uGlare;   // extra burst while the sun sits right on a limb
+uniform vec3 uTint;
+varying vec2 vNdc;
+
+float disc(vec2 p, vec2 c, float r, float soft) {
+  return smoothstep(r, r * (1.0 - soft), length((p - c) * vec2(uAspect, 1.0)));
+}
+
+void main() {
+  vec2 d = (vNdc - uSun) * vec2(uAspect, 1.0);
+  float r = length(d);
+  float a = atan(d.y, d.x);
+
+  // core and wide soft glow
+  float glow = exp(-r * 10.0) * 0.7 + exp(-r * 3.0) * 0.08 + 0.0015 / (r * r + 0.0015) * 0.3;
+  // starburst: 6 long spikes, 14 fine ones, fading with distance
+  float spikes = pow(abs(cos(a * 3.0 + 0.4)), 160.0) + pow(abs(cos(a * 7.0 + 1.1)), 90.0) * 0.3;
+  spikes *= exp(-r * (6.0 - uGlare * 2.5)) * 0.6;
+  // anamorphic streak
+  float streak = exp(-abs(d.y) * 220.0) * exp(-abs(d.x) * 1.8) * 0.4;
+
+  vec3 col = uTint * (glow + spikes) + vec3(0.55, 0.75, 1.0) * streak;
+
+  // ghosts along the sun → centre axis, mirrored to the other side
+  vec2 axis = -uSun;
+  col += vec3(0.30, 0.55, 1.00) * disc(vNdc, uSun + axis * 0.55, 0.03, 0.6) * 0.12;
+  col += vec3(1.00, 0.60, 0.25) * disc(vNdc, uSun + axis * 1.25, 0.05, 0.3) * 0.05;
+  col += vec3(0.45, 1.00, 0.70) * disc(vNdc, uSun + axis * 1.55, 0.016, 0.5) * 0.12;
+  // faint halo ring
+  float ring = exp(-pow((r - 0.62) * 22.0, 2.0)) * 0.05;
+  col += vec3(0.6, 0.8, 1.0) * ring;
+
+  gl_FragColor = vec4(col * uVis * (0.8 + uGlare * 0.5), 1.0);
   ${OUTPUT}
 }
 `;

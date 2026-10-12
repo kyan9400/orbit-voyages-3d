@@ -14,8 +14,8 @@ Tone: calm, precise, a little poetic. Mission-control telemetry meets a luxury t
 ## Sections (6) and camera shots
 | # | id | Section | Shot |
 |---|----|---------|------|
-| 0 | `launch` | Hero | Close on Earth, night side and city lights on the left, sunrise rim |
-| 1 | `route` | The route | High orbit, Earth limb below, Moon ahead |
+| 0 | `launch` | Hero | Orbital sunrise: Earth's night side and cities fill the lower right, the sun breaks over the limb with a lens flare, the cruiser parked in the foreground |
+| 1 | `route` | The route | Lunar slingshot: close past the Moon, gibbous and cratered, filling the right of the frame |
 | 2 | `ship` | The ship | Deep space beside the Meridian-class cruiser, ring turning |
 | 3 | `aboard` | Life aboard | The long coast, Mars a red point ahead, flight streaks |
 | 4 | `mars` | Arrival | Mars fills the frame, thin dusty atmosphere |
@@ -69,6 +69,23 @@ override). Reduced = no ambient spin/drift, no damped sweeps: the camera **cuts*
 ### No WebGL / context lost
 A designed code-made SVG poster (`public/poster.svg`: Earth crescent, Mars, star dust, trajectory arc) is always the
 bottom layer; the canvas fades in over it only when ready, and is removed on context loss. Page is fully usable without 3D.
+
+### Visual redesign (round 2)
+The hero is now an orbital sunrise instead of a dark Earth at eye level: the camera sits in low orbit looking across
+the night side toward the sun, which sits just outside the limb. The atmosphere shell was rewritten to shade by the
+altitude each view ray grazes (thin Rayleigh-blue line, sunset colours along the terminator, strong forward
+scattering toward the sun), and a full-screen additive lens flare (starburst, anamorphic streak, ghosts, halo) is
+occluded on the CPU by the angular radii of Earth, Moon and Mars, so it blooms as the sun clears a limb. The cruiser
+appears twice: scaled down and parked in the hero foreground, then at its deep-space station (it swaps while the
+camera faces the Moon). The Moon moved to (1.8, 1, -7.8) and the route shot is a close, sunlit flyby; each chapter
+holds its composition for the first 14 % of its leg. The sky bake gained magenta and teal emission nebulae with
+filaments. A slow camera drift runs in full motion only. The night side gets a faint cool fill and city lights reach
+higher latitudes (the Earth's tilt is flipped so the hero sees temperate latitudes). The engine glow and plume were
+toned down (no more white-out on the ship shot). The SVG poster now draws the same sunrise composition.
+
+**Start-up:** the bake shaders used hash-based value noise, which ANGLE/D3D compiled for ~35 s before the canvas
+appeared (visitors saw only the poster). Noise now reads a 64³ random lattice from a `Data3DTexture` (one filtered
+fetch with quintic offset, freed after the bakes); the canvas is ready ~6–7 s after load on the same machine.
 
 ## Design system
 **Palette**
