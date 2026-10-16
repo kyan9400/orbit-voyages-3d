@@ -19,12 +19,16 @@ native scrolling and a single damping layer inside the 3D rig (PERF-RULES rule 5
 which keeps the first-load bundle small.
 
 ## The signature 3D technique
-- **Planets baked on the GPU at start-up.** Fragment shaders paint seamless equirectangular maps into render targets
-  (fBm value noise with domain warping on the sphere direction, crater cells, a canyon system, polar caps):
-  Earth albedo + ocean mask, Earth clouds / city lights / height, Mars, the Moon and a nebula sky. The per-frame
-  shaders only sample these maps, so they stay cheap on integrated GPUs and phones.
+- **Real planets from NASA imagery.** Earth is the Blue Marble (with an ocean mask for the sun glint), Black Marble
+  city lights on the night side and the Blue Marble cloud layer; the Moon is the LRO colour map with LOLA elevation
+  as a bump map; Mars is the Viking colour mosaic. The maps are packed offline into WebP (≈1.6 MB for both tiers,
+  2048 px on the high tier, 1024 px elsewhere), downloaded with the 3D chunk and decoded off the main thread with
+  `createImageBitmap`. The hero frame looks down on India at night; the Moon flyby crosses the far side (Mare
+  Moscoviense); the Mars approach faces Tharsis with Olympus Mons on the dawn terminator. Close up, each city-light
+  texel is split into points of light so low orbit reads as clusters of cities rather than blurred squares.
+- **Nebula sky baked on the GPU at start-up** (fBm value noise with domain warping on the sphere direction).
 - **Shading:** day/night terminator, ocean glint, drifting clouds with offset cloud shadows, warm city lights on the
-  night side, bump-mapped relief on Mars and the Moon, a sunset tint along the terminator.
+  night side, LOLA bump-mapped relief on the Moon, a sunset tint along the terminator.
 - **Atmosphere glow:** additive back-face shells whose fresnel peaks exactly at the planet's limb, brighter on the
   sun side, with forward scattering when the sun is behind the planet.
 - **Starfield + nebula** that follow the camera (infinitely far), with a milky-way band and colour temperatures.
@@ -42,14 +46,14 @@ which keeps the first-load bundle small.
   pure function of scroll position, so reduced motion shows clean cuts. The HUD reads "Burn" meanwhile.
 - **"Lights on" intro:** as the canvas fades in over the poster, the Earth's night side switches on city by city
   (brightest first) and the sun brightens.
-- **Planet details:** relief shading on Earth's land, a wind-broken ocean glint, earthshine on the Moon's night side,
+- **Planet details:** a wind-broken ocean glint, earthshine on the Moon's night side,
   a dusty haze band along the Martian terminator, and a noise-shaped Phobos with two crater dimples.
 
 ### Performance
 - `frameloop="demand"`: scrolling invalidates; the rig renders every frame only while it settles; ambient motion
   (planet spin, clouds, ring) runs at ~30 fps and never in a hidden tab.
 - Quality tier chosen before the canvas exists (GPU name, cores, memory, touch; `?quality=low|medium|high`), sets
-  DPR cap, antialiasing, bake size, star and streak counts. Frame-time watcher lowers the DPR on slow GPUs.
+  DPR cap, antialiasing, planet-map size, star and streak counts. Frame-time watcher lowers the DPR on slow GPUs.
 - Shaders compiled with `compileAsync` behind a poster before the canvas fades in.
 - 3D chunk loaded with `next/dynamic({ ssr: false })` only after window `load` + an idle callback + a tiny GPU probe;
   software renderers (SwiftShader, llvmpipe, …) never download it and keep the poster (`?quality=…` forces 3D on).
@@ -57,8 +61,8 @@ which keeps the first-load bundle small.
   material — including the exhaust plume — is compiled before the canvas is shown. No `backdrop-filter` anywhere.
 - Desktop pointer polish (custom cursor, magnetic buttons) is its own ~1 KB chunk, imported after `load` + idle
   only for a fine pointer with full motion.
-- `prefers-reduced-motion` respected by default (camera cuts between shots, no ambient motion) with a
-  "Turn on full motion" toggle (`?motion=full` also works). Without WebGL a code-made SVG poster stays in place.
+- Full motion by default; the "Reduce motion" toggle (remembered, or `?motion=reduced`) switches to camera cuts
+  between shots with no ambient motion. Without WebGL a code-made SVG poster stays in place.
 
 ## Run it
 ```bash
@@ -76,11 +80,12 @@ src/components/     Backdrop (poster + lazy canvas), FlightTracker (scroll → s
 src/three/          FlightCanvas (R3F wrapper), world.ts (scene + camera rig + burn), ship.ts (the cruiser), glow.ts, shaders.ts (GLSL)
 src/lib/            flight store, quality tiers, motion preference, pointer (lazy cursor + magnetic buttons)
 public/poster.svg   no-WebGL / pre-load poster
+public/textures/    NASA planet maps (Earth, Moon, Mars) packed as WebP
 SPEC.md             concept, copy, design system, budgets
 ```
 
 ## Credits
-See [CREDITS.md](CREDITS.md). All 3D content is procedural; fonts are SIL OFL.
+See [CREDITS.md](CREDITS.md). Planet surfaces are public-domain NASA imagery; everything else is procedural; fonts are SIL OFL.
 
 ---
 © 2026 Alhassan Alfarran. See [LICENSE](LICENSE).

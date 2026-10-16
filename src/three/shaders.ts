@@ -1,25 +1,19 @@
 /*
-  GLSL for Orbit Voyages. Everything visible is generated here.
+  GLSL for Orbit Voyages.
 
-  BAKE shaders run once at start-up: they paint equirectangular maps into render
-  targets (the planet surfaces, clouds, city lights, the nebula sky). The noise is
-  evaluated on the 3D sphere direction, so the maps have no seams.
-  RENDER shaders run every frame and only read those maps, which keeps the
-  per-pixel cost low on integrated GPUs and phones.
+  The planet surfaces are real NASA imagery (Blue Marble, Black Marble, LRO, Viking),
+  packed offline into equirectangular WebP maps (see world.ts / CREDITS.md).
+  The BAKE shader runs once at start-up and paints the nebula sky into a render target;
+  the noise is evaluated on the 3D sphere direction, so the map has no seams.
+  RENDER shaders run every frame and only read maps, which keeps the per-pixel cost
+  low on integrated GPUs and phones.
 
-  Colour maps store sqrt(linear colour) in 8-bit channels (cheap gamma-2 encoding,
-  no banding in the dark oceans); render shaders square them back.
+  Colour maps are sRGB, which is close to sqrt(linear colour); render shaders square
+  them back (cheap gamma-2 decode).
 */
 
-/* ---------- shared noise ---------- */
+/* ---------- shared noise (sky bake) ---------- */
 const NOISE = /* glsl */ `
-// hash adapted from "Hash without Sine" by David Hoskins (MIT)
-float hash13(vec3 p3) {
-  p3 = fract(p3 * 0.1031);
-  p3 += dot(p3, p3.zyx + 31.32);
-  return fract((p3.x + p3.y) * p3.z);
-}
-
 // value noise from a 64^3 random lattice in a 3D texture: one hardware-filtered fetch with
 // quintic smoothing (offsetting the coordinate inside the cell). Far cheaper to compile than
 // eight inlined hashes per call, which used to cost tens of seconds on D3D (ANGLE).
@@ -55,145 +49,6 @@ varying vec2 vUv;
 void main() {
   vUv = uv;
   gl_Position = vec4(position.xy, 0.0, 1.0);
-}
-`;
-
-/* ---------- Earth ---------- */
-const EARTH_HEIGHT = /* glsl */ `
-const float SEA = 0.535;
-float earthHeight(vec3 d, out vec3 w) {
-  vec3 p = d * 1.55 + vec3(3.7, 1.3, 8.1);
-  w = vec3(fbm(p * 1.3 + 11.0), fbm(p * 1.3 + 23.0), fbm(p * 1.3 + 37.0)) - 0.5;
-  float h = fbm(p + w * 0.95);
-  h += (fbm(d * 9.0 + w * 2.0) - 0.5) * 0.09;
-  return h;
-}
-`;
-
-export const earthSurfaceFrag = /* glsl */ `
-varying vec2 vUv;
-${NOISE}
-${EARTH_HEIGHT}
-void main() {
-  vec3 d = dirFromUv(vUv);
-  vec3 w;
-  float h = earthHeight(d, w);
-  float lat = abs(d.y);
-
-  float ocean = 1.0 - smoothstep(SEA - 0.003, SEA + 0.003, h);
-  float depth = clamp((SEA - h) / 0.16, 0.0, 1.0);
-  vec3 oceanCol = mix(vec3(0.020, 0.115, 0.190), vec3(0.004, 0.022, 0.065), smoothstep(0.0, 0.55, depth));
-
-  float elev = clamp((h - SEA) / 0.2, 0.0, 1.0);
-  float moist = fbm(d * 3.1 + w + 5.0);
-  float aridity = moist * 0.75 + exp(-pow((lat - 0.42) * 4.5, 2.0)) * 0.38;
-  float grain = fbm(d * 22.0 + w * 3.0);
-  vec3 green = mix(vec3(0.035, 0.090, 0.030), vec3(0.110, 0.170, 0.050), grain);
-  vec3 desert = mix(vec3(0.42, 0.30, 0.17), vec3(0.62, 0.47, 0.28), grain);
-  vec3 land = mix(green, desert, smoothstep(0.56, 0.70, aridity));
-  land = mix(land, vec3(0.20, 0.20, 0.15), smoothstep(0.55, 0.85, lat));           // tundra
-  land = mix(land, vec3(0.26, 0.22, 0.19), smoothstep(0.45, 0.85, elev) * 0.8);    // mountains
-  vec3 col = mix(land, oceanCol, ocean);
-
-  float ice = smoothstep(0.80, 0.84, lat + (fbm(d * 6.0) - 0.5) * 0.14);
-  ice = max(ice, (1.0 - ocean) * smoothstep(0.82, 0.95, elev));
-  col = mix(col, vec3(0.80, 0.85, 0.90), ice);
-  ocean *= 1.0 - ice;
-
-  gl_FragColor = vec4(sqrt(col), ocean);
-}
-`;
-
-export const earthDataFrag = /* glsl */ `
-varying vec2 vUv;
-${NOISE}
-${EARTH_HEIGHT}
-void main() {
-  vec3 d = dirFromUv(vUv);
-  vec3 w;
-  float h = earthHeight(d, w);
-  float lat = abs(d.y);
-  float land = smoothstep(SEA - 0.002, SEA + 0.004, h);
-
-  // clouds: warped noise stretched along latitude, with tropical and storm-track belts
-  vec3 q = vec3(d.x, d.y * 1.7, d.z) * 2.6;
-  vec3 cw = vec3(fbm(q * 1.4 + 3.0), fbm(q * 1.4 + 9.0), fbm(q * 1.4 + 17.0)) - 0.5;
-  float c = fbm(q + cw * 1.8);
-  float belts = 0.5 + 0.5 * cos(asin(d.y) * 6.0);
-  c = c * 0.86 + belts * 0.12 + (fbm(d * 15.0 + cw * 3.0) - 0.5) * 0.28;
-  float clouds = smoothstep(0.50, 0.74, c);
-
-  // city lights: populated coasts and temperate bands, as fine specks
-  float pop = smoothstep(0.55, 0.78, fbm(d * 4.5 + 40.0)) * (1.0 - smoothstep(0.74, 0.9, lat));
-  float coast = 1.0 - smoothstep(0.0, 0.05, h - SEA);
-  float speck = smoothstep(0.70, 0.95, vnoise(d * 170.0)) * 0.8 + smoothstep(0.80, 0.97, vnoise(d * 430.0)) * 0.6;
-  float lights = clamp(land * (pop * 0.85 + coast * pop * 0.7) * speck, 0.0, 1.0);
-
-  float height = land * clamp((h - SEA) / 0.2, 0.0, 1.0);
-  gl_FragColor = vec4(clouds, lights, height, 1.0);
-}
-`;
-
-/* ---------- rocky worlds (Mars, Moon) ---------- */
-export const rockyBakeFrag = /* glsl */ `
-varying vec2 vUv;
-uniform vec3 uDark;
-uniform vec3 uBase;
-uniform vec3 uBright;
-uniform float uCap;
-uniform float uCanyon;
-uniform float uCraters;
-uniform float uMaria;
-uniform float uSeed;
-${NOISE}
-
-// bowl-shaped craters with raised rims, one per lucky cell
-float craters(vec3 p) {
-  vec3 i = floor(p);
-  vec3 f = fract(p);
-  float h = 0.0;
-  for (int z = -1; z <= 1; z++)
-  for (int y = -1; y <= 1; y++)
-  for (int x = -1; x <= 1; x++) {
-    vec3 g = vec3(float(x), float(y), float(z));
-    vec3 cell = i + g;
-    float exists = step(0.55, hash13(cell + 9.9));
-    vec3 o = vec3(hash13(cell), hash13(cell + 17.1), hash13(cell + 31.7));
-    float r = 0.22 + 0.22 * hash13(cell + 5.3);
-    float x2 = length(g + o - f) / r;
-    float bowl = (x2 * x2 - 1.0) * (1.0 - step(1.0, x2));
-    float rim = exp(-pow((x2 - 1.0) * 4.0, 2.0)) * 0.45;
-    h += exists * (bowl * 0.7 + rim);
-  }
-  return h;
-}
-
-void main() {
-  vec3 d = dirFromUv(vUv);
-  vec3 p = d + uSeed;
-  vec3 w = vec3(fbm(p * 2.0 + 1.0), fbm(p * 2.0 + 7.0), fbm(p * 2.0 + 13.0)) - 0.5;
-  float base = fbm(p * 2.1 + w * 0.8);
-  float cr = craters(p * 5.0) * 0.55 + craters(p * 11.0 + 3.0) * 0.32 + craters(p * 24.0 + 7.0) * 0.18;
-  float h = 0.5 + (base - 0.5) * 0.9 + cr * 0.10 * uCraters + (fbm(p * 18.0) - 0.5) * 0.07;
-
-  // one long canyon system south of the equator (Valles-like)
-  float wiggle = (fbm(d * 4.0 + 2.0) - 0.5) * 0.10;
-  float canyon = uCanyon * smoothstep(0.045, 0.0, abs(d.y + 0.14 + wiggle))
-    * smoothstep(0.08, 0.20, vUv.x) * smoothstep(0.62, 0.45, vUv.x);
-  h -= canyon * 0.22;
-
-  float region = fbm(p * 1.35 + w * 1.2 + 21.0);
-  float maria = smoothstep(0.50, 0.63, region) * uMaria;
-  vec3 col = mix(uBase, uDark, maria);
-  col = mix(col, uBright, smoothstep(0.55, 0.78, h) * 0.55);
-  col *= 0.82 + 0.36 * fbm(d * 34.0 + w);
-  col = mix(col, uDark * 0.75, canyon * 0.6);
-
-  float n = (fbm(d * 8.0) - 0.5) * 0.07;
-  float cap = uCap * (smoothstep(0.935, 0.955, d.y + n) + 0.8 * smoothstep(0.95, 0.97, -d.y + n));
-  col = mix(col, vec3(0.86, 0.84, 0.82), clamp(cap, 0.0, 1.0));
-
-  gl_FragColor = vec4(sqrt(max(col, 0.0)), clamp(h, 0.0, 1.0));
 }
 `;
 
@@ -253,13 +108,18 @@ void main() {
 `;
 
 export const earthFrag = /* glsl */ `
+uniform vec2 uMapSize;
+// hash adapted from "Hash without Sine" by David Hoskins (MIT)
+float hash12(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
 uniform sampler2D uSurface;
 uniform sampler2D uData;
 uniform vec3 uSun;
 uniform float uCloud;
 uniform float uLights; // intro: 0 = city lights off, 1 = all on
-uniform vec2 uTexel;
-uniform float uBump;
 varying vec2 vUv;
 varying vec3 vN;
 varying vec3 vT;
@@ -272,18 +132,26 @@ void main() {
   vec4 s = texture2D(uSurface, vUv);
   vec3 albedo = s.rgb * s.rgb;
   float ocean = s.a;
-  vec4 data = texture2D(uData, vUv);
-  float lightsMap = data.g;
+  float lightsMap = texture2D(uData, vUv).g;
+
+  // Close up (low orbit), one Black Marble texel spans dozens of pixels. Split each texel into
+  // 8 x 8 cells and light a share of them (more where the city is brighter) as soft points,
+  // so cities read as clusters of lights rather than blurred squares. Fades out when the map is minified.
+  vec2 cellUv = vUv * uMapSize * 8.0;
+  vec2 fw = fwidth(vUv) * uMapSize;
+  float texPx = 1.0 / max(min(fw.x, fw.y), 1e-5);   // screen pixels per texel (along the more magnified axis)
+  float zoom = smoothstep(3.0, 10.0, texPx);
+  if (zoom > 0.0) {
+    float h = hash12(floor(cellUv));
+    float dotShape = smoothstep(0.55, 0.05, length(fract(cellUv) - 0.5));
+    float speck = step(1.0 - lightsMap * 0.85, h) * dotShape;
+    lightsMap = mix(lightsMap, lightsMap * 0.1 + speck * 1.9 * sqrt(lightsMap), zoom);
+  }
   float c = texture2D(uData, vUv + vec2(uCloud, 0.0)).r;
   float shadow = texture2D(uData, vUv + vec2(uCloud - 0.003, 0.002)).r;
 
-  // relief: land height (ocean is 0) tilts the normal, shading mountains near the terminator
+  // the Blue Marble colour already carries shaded relief, so the geometric normal is used
   vec3 N = Ng;
-  #ifdef RELIEF
-  float hu = texture2D(uData, vUv + vec2(uTexel.x, 0.0)).b;
-  float hv = texture2D(uData, vUv + vec2(0.0, uTexel.y)).b;
-  N = normalize(Ng - uBump * ((hu - data.b) * normalize(vT) + (hv - data.b) * normalize(vB)));
-  #endif
 
   float ndl = dot(Ng, L);
   float lit = max(dot(N, L), 0.0) * smoothstep(-0.05, 0.08, ndl);

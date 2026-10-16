@@ -1,8 +1,8 @@
 /*
   Motion preference.
-  We follow the operating system's "reduce motion" setting by default, but many
-  people switch animations off for speed rather than comfort, so the visitor can
-  turn full motion back on. The choice is remembered; ?motion=full|reduced wins.
+  The site starts in full motion on every first visit. The visitor can switch to
+  reduced motion with the toggle; that choice is remembered (localStorage) and
+  respected on later visits. ?motion=full|reduced wins over both.
 */
 
 const KEY = "orbit-motion";
@@ -19,16 +19,10 @@ function readChoice(): Choice {
   }
 }
 
-export function systemPrefersReduced(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 /** true = reduced motion. Client only. */
 export function readReducedMotion(): boolean {
   const choice = readChoice();
-  if (choice === "full") return false;
-  if (choice === "reduced") return true;
-  return systemPrefersReduced();
+  return choice === "reduced";
 }
 
 /** Save the choice and reload so every system starts in the right mode. */

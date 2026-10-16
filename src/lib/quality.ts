@@ -10,8 +10,7 @@ export type QualitySettings = {
   tier: Tier;
   dprCap: number;
   antialias: boolean;
-  bake: number; // width of the planet maps (height = width / 2)
-  marsBake: number;
+  bake: number; // width of the NASA planet maps: 2048 = full set, 1024 = lighter set
   stars: number;
   streaks: number;
   envMap: boolean; // RoomEnvironment PMREM reflections on the cruiser
@@ -25,9 +24,9 @@ export type QualityDecision =
   | { mode: "none"; reason: "no-webgl" | "software" };
 
 const TIERS: Record<Tier, Omit<QualitySettings, "tier">> = {
-  high: { dprCap: 2, antialias: true, bake: 2048, marsBake: 2048, stars: 7000, streaks: 1400, envMap: true, shipDetail: 2, plume: true },
-  medium: { dprCap: 1.5, antialias: true, bake: 1024, marsBake: 1024, stars: 4000, streaks: 800, envMap: true, shipDetail: 1, plume: true },
-  low: { dprCap: 1, antialias: false, bake: 1024, marsBake: 512, stars: 2000, streaks: 350, envMap: false, shipDetail: 0, plume: true },
+  high: { dprCap: 2, antialias: true, bake: 2048, stars: 7000, streaks: 1400, envMap: true, shipDetail: 2, plume: true },
+  medium: { dprCap: 1.5, antialias: true, bake: 1024, stars: 4000, streaks: 800, envMap: true, shipDetail: 1, plume: true },
+  low: { dprCap: 1, antialias: false, bake: 1024, stars: 2000, streaks: 350, envMap: false, shipDetail: 0, plume: true },
 };
 
 const ORDER: Tier[] = ["low", "medium", "high"];

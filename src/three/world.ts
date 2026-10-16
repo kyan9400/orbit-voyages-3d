@@ -25,13 +25,10 @@ import { buildShip, type Ship } from "./ship";
 import {
   atmosphereFrag,
   bakeVertex,
-  earthDataFrag,
   earthFrag,
-  earthSurfaceFrag,
   flareFrag,
   flareVertex,
   planetVertex,
-  rockyBakeFrag,
   rockyFrag,
   skyBakeFrag,
   skyFrag,
@@ -49,6 +46,9 @@ const MOON = new THREE.Vector3(1.8, 1.0, -7.8);
 const SHIP = new THREE.Vector3(5.2, 1.3, -26);
 const MARS = new THREE.Vector3(6, 0.4, -72);
 const MARS_R = 0.9;
+/* bump strength per texel of the LOLA elevation map (the Mars mosaic already carries shaded relief) */
+const MOON_BUMP = 0.008;
+const MARS_BUMP = 0;
 const SHIP_ROT = new THREE.Euler(0.08, -0.12, 0.18);
 /* Hero: the same cruiser, parked in low orbit in the foreground of the sunrise (scaled down,
    silhouetted against the night side). It jumps to its deep-space station while the camera
@@ -150,6 +150,47 @@ function bake(
   quad.geometry.dispose();
   mat.dispose();
   return rt;
+}
+
+/* ---------------- NASA surface maps ----------------
+  Packed offline from public-domain NASA imagery (see CREDITS.md) into the layout the
+  render shaders read: rgb = colour (sRGB, which the shaders square back to linear),
+  alpha = ocean mask (Earth) or elevation (Moon, Mars). Earth data: r = clouds, g = city lights.
+  Decoded off the main thread with createImageBitmap (straight alpha, no colour conversion). */
+const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
+function loadMap(file: string): Promise<THREE.Texture> {
+  const loader = new THREE.ImageBitmapLoader();
+  loader.setOptions({ imageOrientation: "flipY", premultiplyAlpha: "none", colorSpaceConversion: "none" });
+  return loader.loadAsync(`${BASE}/textures/${file}`).then((bitmap: ImageBitmap) => {
+    const tex = new THREE.Texture(bitmap);
+    tex.flipY = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
+  });
+}
+
+type Maps = Record<"earthSurface" | "earthData" | "marsMap" | "moonMap", THREE.Texture>;
+
+/** Texture widths per tier: 2048 on high (Mars source is 1440), 1024 elsewhere. */
+function mapWidths(q: QualitySettings) {
+  const hi = q.bake >= 2048;
+  return { planet: hi ? 2048 : 1024, mars: hi ? 1440 : 1024 };
+}
+
+function loadMaps(q: QualitySettings): Promise<Maps> {
+  const w = mapWidths(q);
+  return Promise.all([
+    loadMap(`earth-surface-${w.planet}.webp`),
+    loadMap(`earth-data-${w.planet}.webp`),
+    loadMap(`mars-${w.mars}.webp`),
+    loadMap(`moon-${w.planet}.webp`),
+  ]).then(([earthSurface, earthData, marsMap, moonMap]) => ({ earthSurface, earthData, marsMap, moonMap }));
 }
 
 /* ---------------- small factories ---------------- */
@@ -323,6 +364,12 @@ export class OrbitWorld {
       made.push(rt);
       return rt;
     };
+    // the NASA maps download and decode (off the main thread) while the sky is baked
+    const mapsPromise = loadMaps(q).then(
+      (m) => m,
+      () => null,
+    );
+    const freeMaps = (m: Maps | null) => m && Object.values(m).forEach((t) => t.dispose());
     lattice = noiseLattice();
     const freeLattice = () => {
       lattice?.dispose();
@@ -331,40 +378,11 @@ export class OrbitWorld {
     const abort = () => {
       made.forEach((rt) => rt.dispose());
       freeLattice();
+      void mapsPromise.then(freeMaps);
       return null;
     };
 
-    /* ---- bake the planets and the sky ---- */
-    const earthSurface = await step(() => bake(renderer, q.bake, earthSurfaceFrag));
-    if (!earthSurface) return abort();
-    const earthData = await step(() => bake(renderer, q.bake, earthDataFrag));
-    if (!earthData) return abort();
-    const marsMap = await step(() =>
-      bake(renderer, q.marsBake, rockyBakeFrag, {
-        uDark: { value: new THREE.Color(0.15, 0.05, 0.022) },
-        uBase: { value: new THREE.Color(0.48, 0.15, 0.05) },
-        uBright: { value: new THREE.Color(0.68, 0.33, 0.16) },
-        uCap: { value: 1 },
-        uCanyon: { value: 1 },
-        uCraters: { value: 0.7 },
-        uMaria: { value: 0.85 },
-        uSeed: { value: 4.2 },
-      }),
-    );
-    if (!marsMap) return abort();
-    const moonMap = await step(() =>
-      bake(renderer, 512, rockyBakeFrag, {
-        uDark: { value: new THREE.Color(0.07, 0.07, 0.075) },
-        uBase: { value: new THREE.Color(0.26, 0.25, 0.24) },
-        uBright: { value: new THREE.Color(0.42, 0.41, 0.4) },
-        uCap: { value: 0 },
-        uCanyon: { value: 0 },
-        uCraters: { value: 1.4 },
-        uMaria: { value: 1 },
-        uSeed: { value: 11.7 },
-      }),
-    );
-    if (!moonMap) return abort();
+    /* ---- bake the nebula sky (the planets use NASA imagery) ---- */
     const skyMap = await step(() => bake(renderer, 1024, skyBakeFrag, { uBand: { value: BAND } }, false));
     if (!skyMap) return abort();
     freeLattice();
@@ -383,42 +401,59 @@ export class OrbitWorld {
       if (!env) return abort();
     }
 
+    const maps = await mapsPromise;
+    if (!maps) throw new Error("planet maps failed to load");
+    // upload each map in its own task so no single frame stalls on texture upload + mipmaps
+    for (const t of Object.values(maps)) {
+      await yieldToMain();
+      if (!alive()) {
+        freeMaps(maps);
+        return abort();
+      }
+      renderer.initTexture(t);
+    }
     await yieldToMain();
-    if (!alive()) return abort();
-    return new OrbitWorld({ earthSurface, earthData, marsMap, moonMap, skyMap }, env, q, reduced);
+    if (!alive()) {
+      freeMaps(maps);
+      return abort();
+    }
+    return new OrbitWorld(maps, skyMap, env, q, reduced);
   }
 
   private constructor(
-    maps: Record<"earthSurface" | "earthData" | "marsMap" | "moonMap" | "skyMap", THREE.WebGLRenderTarget>,
+    maps: Maps,
+    skyMap: THREE.WebGLRenderTarget,
     env: THREE.WebGLRenderTarget | null,
     private q: QualitySettings,
     private reduced: boolean,
   ) {
-    const { earthSurface, earthData, marsMap, moonMap, skyMap } = maps;
-    this.renderTargets.push(earthSurface, earthData, marsMap, moonMap, skyMap);
+    const { earthSurface, earthData, marsMap, moonMap } = maps;
+    this.renderTargets.push(skyMap);
     if (env) this.renderTargets.push(env);
+    this.disposables.push(earthSurface, earthData, marsMap, moonMap);
+    const widths = mapWidths(q);
+    for (const t of [earthSurface, earthData, marsMap, moonMap]) t.anisotropy = q.tier === "low" ? 1 : 4;
 
     /* ---- Earth: tilted axis, spinning surface, clouds drift in the shader ---- */
     const earthTilt = new THREE.Group();
-    earthTilt.rotation.z = -0.41; // north pole leans away from the hero camera: the lit cities sit in temperate latitudes
+    // tilted so the hero frame looks down on the Indian subcontinent at night (NASA Black Marble lights)
+    earthTilt.rotation.set(-0.22, 0, -0.41);
     earthTilt.position.copy(EARTH);
     this.earthMat = new THREE.ShaderMaterial({
       vertexShader: planetVertex,
       fragmentShader: earthFrag,
       uniforms: {
-        uSurface: { value: earthSurface.texture },
-        uData: { value: earthData.texture },
+        uSurface: { value: earthSurface },
+        uData: { value: earthData },
         uSun: { value: SUN_DIR },
         uCloud: { value: 0 },
         uLights: { value: reduced ? 1 : 0 },
-        uTexel: { value: new THREE.Vector2(1 / q.bake, 2 / q.bake) },
-        uBump: { value: q.bake * 0.004 },
+        uMapSize: { value: new THREE.Vector2(widths.planet, widths.planet / 2) },
       },
-      defines: q.tier === "low" ? {} : { RELIEF: "" },
     });
     const earth = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 64), this.earthMat);
     this.earthSpin.add(earth);
-    this.earthSpin.rotation.y = 2.2;
+    this.earthSpin.rotation.y = 1.6;
     earthTilt.add(this.earthSpin);
     this.root.add(earthTilt);
     const earthAtm = atmosphereShell(EARTH, 1, 1.06, new THREE.Color(0.22, 0.5, 1.0), new THREE.Color(1.0, 0.5, 0.25), 0.9);
@@ -443,9 +478,10 @@ export class OrbitWorld {
       });
     this.moon = new THREE.Mesh(
       new THREE.SphereGeometry(0.4, 64, 32),
-      rockyMat(moonMap.texture, 512, new THREE.Color(0, 0, 0), 0, 0.042, 0.035),
+      rockyMat(moonMap, widths.planet, new THREE.Color(0, 0, 0), 0, MOON_BUMP, 0.035),
     );
     this.moon.position.copy(MOON);
+    this.moon.rotation.y = 3.4; // the slingshot passes over the far side
     this.root.add(this.moon);
 
     /* ---- Mars + Phobos ---- */
@@ -454,10 +490,10 @@ export class OrbitWorld {
     marsTilt.rotation.z = -0.44;
     const mars = new THREE.Mesh(
       new THREE.SphereGeometry(MARS_R, 128, 64),
-      rockyMat(marsMap.texture, q.marsBake, new THREE.Color(0.9, 0.5, 0.34), 0.5, 0.022),
+      rockyMat(marsMap, widths.mars, new THREE.Color(0.9, 0.5, 0.34), 0.5, MARS_BUMP),
     );
     this.marsSpin.add(mars);
-    this.marsSpin.rotation.y = 3.6;
+    this.marsSpin.rotation.y = 0.88; // Tharsis faces the camera: Olympus Mons on the dawn terminator, Valles Marineris to the east
     marsTilt.add(this.marsSpin);
     this.root.add(marsTilt);
     const marsAtm = atmosphereShell(MARS, MARS_R, 1.05, new THREE.Color(0.95, 0.55, 0.38), new THREE.Color(0.55, 0.62, 0.9), 1.1);

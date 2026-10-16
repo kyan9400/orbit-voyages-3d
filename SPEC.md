@@ -23,15 +23,15 @@ Tone: calm, precise, a little poetic. Mission-control telemetry meets a luxury t
 Footer: contact, motion toggle, copyright, disclaimer.
 
 ## Signature 3D moment
-**A scroll-driven flight from Earth to Mars.** Everything is made in code:
+**A scroll-driven flight from Earth to Mars.** Real planets, everything else made in code:
 
-- **Procedural planets, baked once on the GPU.** At start-up, fragment shaders render equirectangular maps
-  (fBm value noise with domain warping, crater cells, canyon carving, polar caps) into render targets with mipmaps.
-  Earth gets albedo + ocean mask and a data map (clouds, city lights, height). Mars and the Moon use the same
-  "rocky world" baker with different palettes. Baking happens behind the canvas loader, then the shaders are compiled
-  with `gl.compileAsync` before the canvas fades in.
+- **Real planets from NASA imagery** (public domain): Blue Marble colour + ocean mask, Black Marble city lights and
+  Blue Marble clouds for Earth; LRO colour + LOLA elevation for the Moon; the Viking colour mosaic for Mars. Packed
+  offline into WebP maps (2048 px high tier, 1024 px otherwise), loaded with the 3D chunk and decoded off the main
+  thread, then uploaded before `gl.compileAsync`; the canvas fades in only after both. The nebula sky is still
+  baked once on the GPU (fBm value noise with domain warping).
 - **Planet shading:** day/night terminator, ocean specular glint, drifting clouds with cloud shadows, warm city
-  lights on the night side, bump-mapped relief on Mars/Moon, sunset tint at the terminator.
+  lights on the night side, LOLA bump-mapped relief on the Moon, sunset tint at the terminator.
 - **Atmosphere glow:** back-face shell with an additive fresnel shader, brighter on the sun side and with forward
   scattering when the sun is behind the planet (blue for Earth, dusty salmon for Mars).
 - **Starfield:** points on a far shell with a milky-way band and colour temperatures, plus a baked nebula sky sphere.
@@ -63,8 +63,8 @@ drei `PerformanceMonitor` steps the DPR down on decline.
 The ambient effects (planet spin, cloud drift, ring rotation) request frames at ~30 fps, never in a hidden tab.
 
 ### Reduced motion
-Default follows `prefers-reduced-motion`; a "Turn on full motion" toggle (localStorage `orbit-motion`, `?motion=full`
-override). Reduced = no ambient spin/drift, no damped sweeps: the camera **cuts** to the shot of the current section.
+Full motion is the default on first visit; a "Reduce motion" toggle switches it off (remembered in localStorage
+`orbit-motion`; `?motion=reduced|full` overrides). Reduced = no ambient spin/drift, no damped sweeps: the camera **cuts** to the shot of the current section.
 
 ### No WebGL / context lost
 A designed code-made SVG poster (`public/poster.svg`: Earth crescent, Mars, star dust, trajectory arc) is always the
@@ -159,7 +159,8 @@ Telegram, WhatsApp, GitHub, portfolio · motion toggle · "© 2026 Alhassan Alfa
 **404:** "Lost in transit." — "This page drifted out of its orbit. The ship is still on course." → "Return to Earth".
 
 ## Assets & licenses
-- 3D: all procedural, written for this project (no models, no textures, no HDRIs).
+- Planet maps: NASA imagery (public domain, credited in CREDITS.md) in `public/textures/`.
+- Everything else in 3D: procedural, written for this project (no models, no HDRIs).
 - Poster, favicon, OG image: code-made (SVG / `next/og`).
 - Fonts: Instrument Serif, Space Grotesk, Space Mono — SIL OFL 1.1 via `next/font/google`.
 - Hash function in shaders adapted from "Hash without Sine" (David Hoskins, MIT).

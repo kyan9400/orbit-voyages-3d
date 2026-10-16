@@ -48,10 +48,8 @@ html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
 }
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
+html[data-motion="reduced"] {
+  scroll-behavior: auto;
 }
 /* No body background: html paints the void colour. A body background would be painted
    above the z-index:-1 fixed backdrop (CSS painting order) and hide the 3D and the poster. */
@@ -436,7 +434,7 @@ html[data-webgl] .backdrop__status {
 .mobile-menu__cta {
   align-self: flex-start;
 }
-/* only with full motion on (the default follows the OS reduce-motion setting) */
+/* only with full motion on (full motion is the default; the toggle can turn it off) */
 .mobile-menu[data-motion="full"] {
   animation: menu-in 0.35s var(--ease);
 }
@@ -506,7 +504,7 @@ html[data-webgl] .backdrop__status {
 }
 
 /* reveal: only once JS is running, only transform + opacity.
-   data-motion follows the visitor's choice (OS setting by default, toggle overrides). */
+   data-motion follows the visitor's choice (full motion by default, the toggle can reduce it). */
 .reveal-ready .reveal {
   opacity: 0;
   transform: translateY(28px);
