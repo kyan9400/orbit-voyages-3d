@@ -1,0 +1,4 @@
+:HL["/orbit-voyages-3d/_next/static/chunks/0kiwz0o0hn6xg.css","style"]
+:HL["/orbit-voyages-3d/_next/static/media/7ebf22b5a21034f8-s.p.3j3877k49yy0l.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+:HL["/orbit-voyages-3d/_next/static/media/e41d5df559864f9e-s.p.1g73gv09-xcb6.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
+0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}},"staleTime":300,"buildId":"XnKANpogOmmIJprU3E6L8"}
