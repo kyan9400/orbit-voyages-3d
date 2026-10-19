@@ -430,7 +430,7 @@ export default function Home() {
               <li><a href="https://t.me/hassan_9400" rel="noopener noreferrer" target="_blank">Telegram<span className="sr-only"> (opens in a new tab)</span></a></li>
               <li><a href="https://wa.me/79193999749" rel="noopener noreferrer" target="_blank">WhatsApp<span className="sr-only"> (opens in a new tab)</span></a></li>
               <li><a href="https://github.com/kyan9400" rel="noopener noreferrer" target="_blank">GitHub<span className="sr-only"> (opens in a new tab)</span></a></li>
-              <li><a href={PORTFOLIO} rel="noopener noreferrer" target="_blank">Portfolio<span className="sr-only"> (opens in a new tab)</span></a></li>
+              <li><a href={process.env.NEXT_PUBLIC_PORTFOLIO_URL ?? PORTFOLIO} rel="noopener noreferrer" target="_blank">Portfolio<span className="sr-only"> (opens in a new tab)</span></a></li>
             </ul>
           </div>
           <div className="footer__end">
